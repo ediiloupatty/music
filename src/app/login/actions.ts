@@ -9,8 +9,14 @@ export async function authenticate(
   formData: FormData,
 ) {
   try {
+    const { username, password } = Object.fromEntries(formData);
+    
     // Attempt to sign in
-    await signIn("credentials", Object.fromEntries(formData), { redirect: false });
+    await signIn("credentials", {
+      username,
+      password,
+      redirectTo: "/"
+    });
   } catch (error) {
     if (error instanceof AuthError) {
       switch (error.type) {
@@ -23,7 +29,4 @@ export async function authenticate(
     // Rethrow redirect errors if signIn throws them
     throw error;
   }
-  
-  // If we reach here, signIn didn't throw (success with redirect: false)
-  redirect("/");
 }
