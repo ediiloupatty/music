@@ -173,7 +173,10 @@ export default function BottomPlayer() {
   }
 
   return (
-    <div className="glass-panel fixed bottom-0 left-0 w-full h-24 border-t border-b-0 border-l-0 border-r-0 rounded-t-2xl px-6 flex items-center justify-between z-50">
+    <div 
+      className="glass-panel fixed bottom-0 left-0 w-full h-24 border-t border-b-0 border-l-0 border-r-0 rounded-t-2xl px-6 flex items-center justify-between z-50"
+      onContextMenu={(e) => e.preventDefault()} // Disable right-click menu
+    >
       
       {/* Visualizer Canvas overlay */}
       <div className="absolute inset-0 w-full h-full -z-10 opacity-30 overflow-hidden rounded-t-2xl pointer-events-none">
@@ -186,6 +189,7 @@ export default function BottomPlayer() {
         crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
+        controlsList="nodownload" // Additional protection for native UI
       />
 
       {/* Track Info */}

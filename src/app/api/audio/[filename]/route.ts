@@ -9,6 +9,15 @@ export async function GET(
   const { filename } = await params;
   const bucketName = process.env.R2_BUCKET_NAME || "music";
 
+  // Anti-Hotlinking & IDM Protection
+  const referer = request.headers.get("referer");
+  const host = request.headers.get("host");
+  
+  // Allow only requests coming from our own domain
+  if (!referer || !referer.includes(host || "")) {
+    return new NextResponse("Forbidden: Direct downloads are not allowed.", { status: 403 });
+  }
+
   try {
     const command = new GetObjectCommand({
       Bucket: bucketName,
