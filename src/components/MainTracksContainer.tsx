@@ -34,34 +34,49 @@ export default function MainTracksContainer({
   return (
     <>
       {/* Tracklist Preview */}
-      {currentCategory && (
-        <div className="flex flex-col gap-4">
-          <h3 className="text-xl font-bold">Tracks in {currentCategory}</h3>
-          {displayTracks.length === 0 ? (
-            <p className="text-slate-400">No tracks found. Upload some via the Admin panel.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {displayTracks.map((track, idx) => {
-                const isFavorited = userFavorites.includes(track.id);
-                return (
-                  <div 
-                    key={track.id} 
-                    className="flex items-center justify-between p-4 glass-panel rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-                    onClick={() => playTrack(displayTracks, idx)}
-                  >
-                    <div className="flex items-center gap-4">
-                      <span className="text-slate-500 w-6 text-right">{idx + 1}</span>
-                      <FavoriteButton trackId={track.id} initialIsFavorited={isFavorited} isLoggedIn={isLoggedIn} />
-                      <span className="font-medium text-white">{track.title}</span>
+      <div className="flex flex-col gap-4">
+        {displayTracks.length === 0 ? (
+          <p className="text-slate-400">No tracks found. Upload some via the Admin panel.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {displayTracks.map((track, idx) => {
+              const isFavorited = userFavorites.includes(track.id);
+              return (
+                <div 
+                  key={track.id} 
+                  className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group"
+                  onClick={() => playTrack(displayTracks, idx)}
+                >
+                  {/* Left Side: Icon + Title + Category */}
+                  <div className="flex items-center gap-4 w-1/2">
+                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-md">
+                      <span className="text-xl">🎵</span>
                     </div>
-                    <span className="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded">{track.category}</span>
+                    <div className="flex flex-col overflow-hidden">
+                      <span className="font-bold text-white text-sm truncate">{track.title}</span>
+                      <span className="text-xs text-slate-400 truncate">{track.category}</span>
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+
+                  {/* Middle: Duration */}
+                  <div className="w-16 text-center">
+                    <span className="text-xs text-slate-500">3:40</span> {/* Mock duration since we don't store it yet */}
+                  </div>
+
+                  {/* Right Side: Rating + Favorite + Menu */}
+                  <div className="flex items-center gap-4 justify-end w-1/4">
+                    <div className="hidden sm:flex items-center gap-1 text-xs font-bold text-yellow-500">
+                      3 <span className="text-[10px]">★</span>
+                    </div>
+                    <FavoriteButton trackId={track.id} initialIsFavorited={isFavorited} isLoggedIn={isLoggedIn} />
+                    <button className="text-slate-600 hover:text-white font-bold tracking-widest pl-2">••</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </>
   );
 }

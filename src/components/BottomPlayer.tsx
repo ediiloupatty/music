@@ -134,9 +134,21 @@ export default function BottomPlayer() {
 
       for (let i = 0; i < bufferLength; i++) {
         barHeight = dataArray[i] / 2;
-        ctx.fillStyle = `rgba(45, 212, 191, ${Math.max(0.1, barHeight / 150)})`;
-        ctx.fillRect(x, HEIGHT - barHeight, barWidth, barHeight);
-        x += barWidth + 1;
+        
+        // Centered mirrored waveform
+        const y = (HEIGHT - barHeight) / 2;
+        
+        // Color based on position (played vs unplayed part of progress)
+        const currentProgressIdx = duration ? (progress / duration) * bufferLength : 0;
+        
+        if (i < currentProgressIdx) {
+           ctx.fillStyle = `rgba(236, 72, 153, ${Math.max(0.4, barHeight / 100)})`; // Pink glow
+        } else {
+           ctx.fillStyle = `rgba(148, 163, 184, ${Math.max(0.1, barHeight / 150)})`; // Slate inactive
+        }
+        
+        ctx.fillRect(x, y, barWidth - 1, barHeight);
+        x += barWidth;
       }
     };
     renderFrame();
@@ -247,14 +259,10 @@ export default function BottomPlayer() {
   // --- Normal Bar Mode ---
   return (
     <div 
-      className="glass-panel fixed bottom-0 left-0 w-full h-auto min-h-[5.5rem] py-3 md:py-0 md:h-24 border-t border-b-0 border-l-0 border-r-0 rounded-t-2xl px-4 md:px-6 flex flex-col md:flex-row items-center justify-between z-50 gap-2 md:gap-0 cursor-pointer hover:bg-slate-900/90 transition-colors"
+      className="glass-panel fixed bottom-0 left-0 w-full h-auto min-h-[6rem] py-3 md:py-0 md:h-24 border-t-0 border-b-0 border-l-0 border-r-0 px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-50 gap-4 md:gap-0 cursor-pointer bg-[#0a0a0c]/90 backdrop-blur-xl transition-colors shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
       onContextMenu={(e) => e.preventDefault()}
       onClick={() => setIsExpanded(true)}
     >
-      <div className="absolute inset-0 w-full h-full -z-10 opacity-30 overflow-hidden rounded-t-2xl pointer-events-none">
-        <canvas ref={canvasRef} className="w-full h-full" width={1000} height={100} />
-      </div>
-
       <audio
         ref={audioRef}
         src={proxyUrl}
@@ -264,35 +272,48 @@ export default function BottomPlayer() {
         controlsList="nodownload"
       />
 
-      {/* Track Info */}
-      <div className="flex items-center gap-3 md:gap-4 w-full md:w-1/3 order-1">
-        <div className="w-10 h-10 md:w-14 md:h-14 rounded-md bg-gradient-to-br from-indigo-500 to-purple-600 border border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0">
+      {/* Left: Track Info */}
+      <div className="flex items-center gap-3 md:gap-4 w-full md:w-1/4 xl:w-1/5 order-1">
+        <div className="w-12 h-12 md:w-14 md:h-14 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-md">
           <span className="text-xl md:text-2xl">🎵</span>
         </div>
         <div className="flex flex-col overflow-hidden">
-          <div className="font-bold text-white text-xs md:text-sm truncate">{currentTrack.title}</div>
-          <div className="text-[10px] md:text-xs text-slate-400 truncate">{currentTrack.category}</div>
+          <div className="font-bold text-white text-sm truncate">{currentTrack.title}</div>
+          <div className="text-xs text-slate-400 truncate">{currentTrack.category}</div>
         </div>
         <div className="ml-auto md:hidden">
           <button onClick={(e) => { e.stopPropagation(); setIsExpanded(true); }} className="text-slate-400">⏶</button>
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="flex flex-col items-center gap-1 md:gap-2 w-full md:w-1/3 order-3 md:order-2 mt-1 md:mt-0" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-6">
-          <button onClick={playPrevTrack} className="text-slate-400 hover:text-white transition-colors">⏮</button>
+      {/* Center: Controls + Visualizer + Duration */}
+      <div className="flex items-center gap-4 md:gap-6 w-full md:flex-1 order-3 md:order-2 px-0 md:px-8" onClick={e => e.stopPropagation()}>
+        
+        {/* Play Controls */}
+        <div className="flex items-center gap-4 flex-shrink-0">
+          <button onClick={playPrevTrack} className="text-slate-400 hover:text-white transition-colors">
+             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          </button>
           <button
             onClick={togglePlay}
-            className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform"
+            className="w-10 h-10 rounded-full bg-gradient-to-tr from-pink-500 to-purple-500 text-white flex items-center justify-center hover:scale-105 transition-transform shadow-[0_0_15px_rgba(236,72,153,0.4)]"
           >
-            {isPlaying ? "⏸" : "▶"}
+            {isPlaying ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="ml-1"><path d="M8 5v14l11-7z"/></svg>
+            )}
           </button>
-          <button onClick={playNextTrack} className="text-slate-400 hover:text-white transition-colors">⏭</button>
+          <button onClick={playNextTrack} className="text-slate-400 hover:text-white transition-colors">
+             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          </button>
         </div>
-        <div className="w-full flex items-center gap-2">
-          <span className="text-xs text-slate-500">{formatTime(progress)}</span>
-          <div className="h-1 flex-1 bg-slate-800 rounded-full overflow-hidden relative cursor-pointer" 
+
+        {/* Visualizer Waveform / Progress */}
+        <div className="flex-1 flex items-center gap-4 min-w-0">
+          <span className="text-xs text-slate-500 font-mono w-10 text-right">{formatTime(progress)}</span>
+          
+          <div className="h-10 flex-1 relative flex items-center cursor-pointer group"
                onClick={(e) => {
                  if(audioRef.current && duration) {
                    const rect = e.currentTarget.getBoundingClientRect();
@@ -300,12 +321,28 @@ export default function BottomPlayer() {
                    audioRef.current.currentTime = percent * duration;
                  }
                }}>
-            <div
-              className="absolute top-0 left-0 h-full bg-white"
-              style={{ width: `${duration ? (progress / duration) * 100 : 0}%` }}
+            
+            {/* The Visualizer Canvas */}
+            <div className="absolute inset-0 w-full h-full flex items-center overflow-hidden pointer-events-none opacity-80">
+              <canvas ref={canvasRef} className="w-full h-full" width={1000} height={40} />
+            </div>
+
+            {/* Hover overlay for seeking */}
+            <div className="absolute inset-0 w-full h-full opacity-0 group-hover:opacity-100 flex items-center transition-opacity">
+              <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
+                <div className="h-full bg-pink-500" style={{ width: `${duration ? (progress / duration) * 100 : 0}%` }}></div>
+              </div>
+            </div>
+            
+            {/* Scrubber head indicator */}
+            <div 
+              className="absolute w-1 h-8 bg-white rounded-full shadow-[0_0_10px_white] pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity"
+              style={{ left: `calc(${duration ? (progress / duration) * 100 : 0}% - 2px)` }}
             ></div>
+
           </div>
-          <span className="text-xs text-slate-500">{formatTime(duration)}</span>
+
+          <span className="text-xs text-slate-500 font-mono w-10">{formatTime(duration)}</span>
         </div>
       </div>
 
