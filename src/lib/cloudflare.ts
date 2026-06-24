@@ -61,6 +61,16 @@ export async function initializeD1Tables() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `;
+  const usersTable = `
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      username TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
   const favoritesTable = `
     CREATE TABLE IF NOT EXISTS favorites (
       user_email TEXT NOT NULL,
@@ -71,6 +81,7 @@ export async function initializeD1Tables() {
   try {
     await queryD1(tracksTable);
     await queryD1(favoritesTable);
+    await queryD1(usersTable);
     console.log("Tables initialized successfully.");
   } catch (error) {
     console.error("Error initializing tables:", error);

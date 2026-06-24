@@ -2,14 +2,15 @@
 
 import { signIn } from "@/auth";
 import { AuthError } from "next-auth";
+import { redirect } from "next/navigation";
 
 export async function authenticate(
   prevState: string | undefined,
   formData: FormData,
 ) {
   try {
-    // Attempt to sign in and redirect to the home page upon success
-    await signIn("credentials", formData, { redirectTo: "/" });
+    // Attempt to sign in
+    await signIn("credentials", Object.fromEntries(formData), { redirect: false });
   } catch (error) {
     if (error instanceof AuthError) {
       switch (error.type) {
@@ -19,7 +20,10 @@ export async function authenticate(
           return "Something went wrong.";
       }
     }
-    // Required to allow Next.js redirect to work!
+    // Rethrow redirect errors if signIn throws them
     throw error;
   }
+  
+  // If we reach here, signIn didn't throw (success with redirect: false)
+  redirect("/");
 }
