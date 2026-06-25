@@ -1,11 +1,9 @@
 import Link from "next/link";
 import MainTracksContainer from "@/components/MainTracksContainer";
+import PlaylistSection from "@/components/PlaylistSection";
 import { getTracksByCategory, getUserFavorites, Track } from "@/lib/cloudflare";
 import { auth, signOut } from "@/auth";
-import { CATEGORIES } from "@/lib/constants";
 import DynamicBackground from "@/components/DynamicBackground";
-
-export const dynamic = "force-dynamic";
 
 export default async function Home({
   searchParams,
@@ -228,93 +226,9 @@ export default async function Home({
 
         {/* SCROLLABLE CONTENT */}
         <div className="flex-1 overflow-y-auto px-4 md:px-8 pb-48">
-          <div className="flex flex-col lg:flex-row gap-8 w-full">
+          <div className="w-full">
 
-            {/* ── LEFT COLUMN ── */}
-            <div className="flex-1 min-w-0">
-
-              {/* Playlists / Categories */}
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-black" style={{ color: "var(--text-primary)" }}>Playlists</h2>
-                <a href="#" className="text-sm transition-colors" style={{ color: "var(--text-muted)" }}>More ›</a>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-5 pb-6 pt-1">
-                {CATEGORIES.map((cat) => {
-                  const isActive = currentCategory === cat.id;
-                  return (
-                    <Link key={cat.id} href={isActive ? "/" : `/?category=${encodeURIComponent(cat.id)}`}
-                      className="block group">
-                      <div className="flex flex-col w-full cursor-pointer text-center md:text-left">
-                        <div
-                          className={`w-full aspect-square rounded-2xl mb-3 shadow-lg overflow-hidden relative bg-gradient-to-br ${cat.bgGradient} transition-all duration-500 group-hover:-translate-y-2 group-hover:scale-105 group-hover:shadow-2xl ${isActive ? 'outline outline-2 outline-offset-2' : ''}`}
-                          style={isActive ? { outlineColor: "var(--accent)" } : {}}
-                        >
-                          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors duration-500 z-[1]" />
-                          <img src={cat.image} alt="" className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500 z-0" />
-                          
-                          {isActive && (
-                            <div className="absolute inset-0 z-[2] flex items-center justify-center">
-                              <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                                style={{ background: "var(--accent)", boxShadow: "0 0 20px var(--accent-glow)" }}>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="white" className="ml-0.5">
-                                  <path d="M8 5v14l11-7z"/>
-                                </svg>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Play button on hover */}
-                          {!isActive && (
-                            <div className="absolute bottom-3 right-3 z-[3] translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
-                              <div className="w-10 h-10 rounded-full text-white flex items-center justify-center shadow-lg hover:scale-110 transition-all"
-                                style={{ background: "var(--accent)" }}>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5"><path d="M8 5v14l11-7z"/></svg>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Rating pill */}
-                          {!isActive && (
-                            <div className="absolute bottom-3 right-3 z-[2] bg-black/40 backdrop-blur-sm px-2.5 py-1 rounded-full text-[11px] font-bold text-white flex items-center gap-1 group-hover:opacity-0 transition-opacity duration-300">
-                              4.5 <span className="text-yellow-300 text-xs">★</span>
-                            </div>
-                          )}
-                        </div>
-                        <h3 className="font-semibold text-sm truncate" style={{ color: "var(--text-primary)" }}>{cat.label}</h3>
-                        <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{cat.desc}</p>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-
-              {/* Category filter chips (horizontal scroll) */}
-              <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1 mb-4">
-                <Link href="/"
-                  className="flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-all"
-                  style={{
-                    background: !currentCategory ? "var(--accent)" : "var(--bg-card)",
-                    color: !currentCategory ? "white" : "var(--text-secondary)",
-                    border: "1px solid",
-                    borderColor: !currentCategory ? "var(--accent)" : "var(--border-card)",
-                  }}>
-                  All
-                </Link>
-                {CATEGORIES.map((cat) => (
-                  <Link key={cat.id}
-                    href={currentCategory === cat.id ? "/" : `/?category=${encodeURIComponent(cat.id)}`}
-                    className="flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-all"
-                    style={{
-                      background: currentCategory === cat.id ? "var(--accent)" : "var(--bg-card)",
-                      color: currentCategory === cat.id ? "white" : "var(--text-secondary)",
-                      border: "1px solid",
-                      borderColor: currentCategory === cat.id ? "var(--accent)" : "var(--border-card)",
-                    }}>
-                    {cat.label}
-                  </Link>
-                ))}
-              </div>
+              <PlaylistSection currentCategory={currentCategory} isLoggedIn={isLoggedIn} />
 
               {/* Tracks */}
               <div>
@@ -328,59 +242,6 @@ export default async function Home({
                   isLoggedIn={isLoggedIn}
                 />
               </div>
-            </div>
-
-            {/* ── RIGHT COLUMN ── */}
-            <div className="w-full lg:w-[280px] xl:w-[300px] flex flex-col gap-6 flex-shrink-0">
-
-              {/* Upgrade banner */}
-              <div
-                className="rounded-2xl p-6 relative overflow-hidden min-h-[170px] group cursor-pointer transition-all duration-500"
-                style={{
-                  background: "linear-gradient(135deg, var(--accent-dark), var(--bg-secondary))",
-                  border: "1px solid var(--border-card)",
-                  boxShadow: "var(--shadow-card)",
-                }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1500ms] skew-x-12 z-10" />
-                <h3 className="text-xl font-extrabold text-white leading-snug drop-shadow-md z-20 relative">
-                  Upgrade<br/>your account
-                </h3>
-                <div className="absolute -bottom-4 -right-2 text-7xl opacity-80 select-none group-hover:scale-110 group-hover:-rotate-12 transition-transform duration-500 z-0">📻</div>
-                <button className="absolute bottom-4 right-4 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 backdrop-blur-md flex items-center justify-center text-white transition-all text-sm shadow-lg group-hover:scale-110 z-20">→</button>
-              </div>
-
-              {/* Focus Stats */}
-              <div>
-                <h2 className="text-base font-black mb-4" style={{ color: "var(--text-primary)" }}>Your Focus Stats</h2>
-                <div className="flex flex-col gap-3">
-                  {[
-                    { title: "Deep Work", value: "12.5 hrs", desc: "this week", iconPath: "M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7zm1-11h-2v5.25l4.5 2.67.75-1.23-3.75-2.22V8z", color: "#3b82f6" },
-                    { title: "Pomodoro Sessions", value: "24 cycles", desc: "completed", iconPath: "M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0012 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z", color: "var(--accent)" },
-                    { title: "Focus Streak", value: "5 days", desc: "in a row", iconPath: "M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z", color: "#f97316" },
-                  ].map((stat) => (
-                    <div
-                      key={stat.title}
-                      className="stat-card-hover flex items-center gap-3 group cursor-pointer p-3 -mx-3 rounded-2xl"
-                    >
-                      <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md group-hover:scale-110 transition-transform"
-                        style={{ background: stat.color + "22" }}>
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill={stat.color}>
-                          <path d={stat.iconPath} />
-                        </svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-sm leading-tight" style={{ color: "var(--text-primary)" }}>{stat.title}</h4>
-                        <div className="flex items-baseline gap-1.5 mt-0.5">
-                          <span className="text-sm font-extrabold" style={{ color: "var(--text-secondary)" }}>{stat.value}</span>
-                          <span className="text-xs" style={{ color: "var(--text-muted)" }}>{stat.desc}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

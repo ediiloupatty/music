@@ -1,9 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
 import NeuronVisualizer from "./NeuronVisualizer";
+import { cleanTitle } from "@/lib/cleanTitle";
+import { saveDurationAction } from "@/app/admin/actions";
 
 type ParsedLyric = { time: number; text: string };
 
@@ -30,7 +32,15 @@ function parseLrc(lrcText: string): ParsedLyric[] | null {
   return parsed.length > 0 ? parsed : null;
 }
 
-// ─── Cover Art Generator (same logic as MainTracksContainer) ───────────────
+// Estimate syllables by counting vowel groups. Works well for Indonesian (where
+// each vowel group is roughly one syllable: "pe-lu-kan-ku" -> 4) and acceptably
+// for English ("girl-friend" -> 2). Used to weight per-word sweep duration.
+function countSyllables(word: string): number {
+  const groups = word.toLowerCase().match(/[aeiouyà-ÿ]+/gi);
+  return Math.max(1, groups ? groups.length : 1);
+}
+
+// â”€â”€â”€ Cover Art Generator (same logic as MainTracksContainer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function hashString(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -101,13 +111,17 @@ function LargeCoverArt({ title, category, coverUrl, size = "lg" }: { title: stri
 }
 
 export default function BottomPlayer() {
-  const { 
-    tracks, 
-    currentTrackIndex, 
-    isPlaying, 
-    setIsPlaying, 
-    playNextTrack, 
-    playPrevTrack 
+  const {
+    tracks,
+    currentTrackIndex,
+    isPlaying,
+    setIsPlaying,
+    playNextTrack,
+    playPrevTrack,
+    repeatMode,
+    shuffle,
+    toggleRepeat,
+    toggleShuffle,
   } = usePlayer();
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -115,6 +129,8 @@ export default function BottomPlayer() {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [activeTab, setActiveTab] = useState<"player" | "lyrics">("player");
+  const [lyricsOffset, setLyricsOffset] = useState(0);
+  const lyricsOffsetRef = useRef(0);
   const audioRef = useRef<HTMLAudioElement>(null);
   
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -131,26 +147,26 @@ export default function BottomPlayer() {
   useEffect(() => {
     setExternalLyrics(null);
     setIsFetchingLyrics(false);
-    
-    if (currentTrack) {
-      const hasTimestamps = currentTrack.lyrics && /\[\d{2}:\d{2}\.\d{2,3}\]/.test(currentTrack.lyrics);
-      
-      if (!hasTimestamps) {
-        const query = `${currentTrack.artist || ''} ${currentTrack.title}`.trim();
-        if (query) {
-          setIsFetchingLyrics(true);
-          fetch(`/api/lyrics?q=${encodeURIComponent(query)}`)
-            .then(res => res.json())
-            .then(data => {
-              if (data.syncedLyrics) {
-                setExternalLyrics(data.syncedLyrics);
-              }
-            })
-            .catch(err => console.error("Failed to fetch synced lyrics", err))
-            .finally(() => setIsFetchingLyrics(false));
-        }
-      }
-    }
+
+    if (!currentTrack) return;
+
+    const hasTimestamps = currentTrack.lyrics && /\[\d{2}:\d{2}\.\d{2,3}\]/.test(currentTrack.lyrics);
+    if (hasTimestamps) return;
+
+    const query = `${currentTrack.artist || ''} ${currentTrack.title}`.trim();
+    if (!query) return;
+
+    // AbortController cancels in-flight request if track changes before it resolves
+    const controller = new AbortController();
+    setIsFetchingLyrics(true);
+
+    fetch(`/api/lyrics?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+      .then(res => res.json())
+      .then(data => { if (data.syncedLyrics) setExternalLyrics(data.syncedLyrics); })
+      .catch(err => { if (err.name !== 'AbortError') console.error("Failed to fetch synced lyrics", err); })
+      .finally(() => setIsFetchingLyrics(false));
+
+    return () => controller.abort();
   }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.lyrics]);
 
   const parsedLyrics = useMemo(() => {
@@ -159,21 +175,173 @@ export default function BottomPlayer() {
     return parseLrc(sourceLyrics);
   }, [externalLyrics, currentTrack?.lyrics]);
 
-  const activeLyricIndex = useMemo(() => {
-    if (!parsedLyrics) return -1;
-    for (let i = parsedLyrics.length - 1; i >= 0; i--) {
-      if (progress >= parsedLyrics[i].time) {
-        return i;
-      }
-    }
-    return -1;
-  }, [progress, parsedLyrics]);
+  // Driven by RAF (not timeupdate) for zero-latency sync
+  const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
 
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
+  const parsedLyricsRef    = useRef<ParsedLyric[] | null>(null);
+  parsedLyricsRef.current  = parsedLyrics;
+  const activeLyricIndexRef = useRef(-1);
+  const activeLineElRef     = useRef<HTMLElement | null>(null);
+
+  // Load per-track offset from localStorage when track changes
+  useEffect(() => {
+    if (!currentTrack?.id) return;
+    const saved = parseFloat(localStorage.getItem(`lyrics_offset_${currentTrack.id}`) || "0");
+    lyricsOffsetRef.current = saved;
+    setLyricsOffset(saved);
+  }, [currentTrack?.id]);
+
+  function adjustOffset(delta: number) {
+    const next = Math.round((lyricsOffsetRef.current + delta) * 10) / 10;
+    lyricsOffsetRef.current = next;
+    setLyricsOffset(next);
+    if (currentTrack?.id) {
+      if (next === 0) localStorage.removeItem(`lyrics_offset_${currentTrack.id}`);
+      else localStorage.setItem(`lyrics_offset_${currentTrack.id}`, String(next));
+    }
+  }
+
+  // Single RAF loop: computes active lyric index + sweep from audio.currentTime directly
+  // This removes the ~250ms delay from timeupdate events entirely
+  useEffect(() => {
+    let rafId: number;
+    const tick = () => {
+      const lyrics    = parsedLyricsRef.current;
+      const container = lyricsContainerRef.current;
+      const audio     = audioRef.current;
+
+      if (lyrics && audio) {
+        // Compensate for audio output latency: the sound the user HEARS right now
+        // corresponds to playback position (currentTime - outputLatency), since the
+        // buffer at currentTime hasn't reached the speakers yet. This auto-corrects
+        // the systematic "lyrics ahead of audio" drift on most devices.
+        const ctx = audioContextRef.current;
+        const outputLatency = ctx ? (ctx.outputLatency || ctx.baseLatency || 0) : 0;
+        const t = audio.currentTime - outputLatency + lyricsOffsetRef.current;
+
+        // Active index â€” computed every frame, no timeupdate delay
+        let newIdx = -1;
+        for (let i = lyrics.length - 1; i >= 0; i--) {
+          if (t >= lyrics[i].time) { newIdx = i; break; }
+        }
+        if (newIdx !== activeLyricIndexRef.current) {
+          activeLyricIndexRef.current = newIdx;
+          activeLineElRef.current = null; // cleared; useEffect sets it after React commits
+          setActiveLyricIndex(newIdx);
+        }
+
+        // Sweep + per-word scale, weighted by syllables with held-note absorption
+        if (container && newIdx >= 0) {
+          const lineEl = activeLineElRef.current;
+          const wordSpans = lineEl?.querySelectorAll<HTMLElement>("[data-wi]");
+
+          const lineStart = lyrics[newIdx].time;
+          const rawEnd    = lyrics[newIdx + 1]?.time ?? (lineStart + 5);
+          const lineGap   = Math.max(0.001, rawEnd - lineStart);
+
+          if (lineEl && wordSpans && wordSpans.length > 0) {
+            const n = wordSpans.length;
+
+            // Per-word duration weighted by syllable count: fast monosyllables get
+            // little time, multi-syllable words ("pe-lu-kan-ku") get proportionally
+            // more, so the sweep speed tracks how the line is actually sung.
+            const SECS_PER_SYL = 0.26;
+            const HELD_NOTE_MAX = 2.6;
+            const dur = new Array<number>(n);
+            let sumBase = 0;
+            for (let i = 0; i < n; i++) {
+              const syl = parseInt(wordSpans[i].dataset.syl || "1") || 1;
+              dur[i] = syl * SECS_PER_SYL;
+              sumBase += dur[i];
+            }
+
+            let totalDur: number;
+            if (sumBase > lineGap) {
+              // Estimated singing is slower than the available gap: compress to fit
+              // (keeps words proportional, just faster overall).
+              const k = lineGap / sumBase;
+              for (let i = 0; i < n; i++) dur[i] *= k;
+              totalDur = lineGap;
+            } else {
+              // Time left over after singing => the last word is most likely a held
+              // note. Absorb the surplus (capped) so a sustained final word sweeps
+              // slowly to match the vocal, instead of finishing early.
+              const surplus = Math.min(lineGap - sumBase, HELD_NOTE_MAX);
+              dur[n - 1] += surplus;
+              totalDur = sumBase + surplus;
+            }
+
+            const p = Math.min(1, Math.max(0, (t - lineStart) / totalDur));
+            container.style.setProperty("--sweep", `${(p * 100).toFixed(2)}%`);
+
+            // Walk cumulative duration fractions to find each word's coverage
+            let acc = 0;
+            for (let i = 0; i < n; i++) {
+              const wStart = acc / totalDur;
+              acc += dur[i];
+              const wEnd = acc / totalDur;
+              const wordCov = Math.min(1, Math.max(0, (p - wStart) / Math.max(0.0001, wEnd - wStart)));
+              const s = wordSpans[i];
+
+              let scale: number;
+              if (wordCov >= 1) {
+                // Fully sung - plain white
+                s.style.color = "white";
+                s.style.removeProperty("background-image");
+                s.style.removeProperty("-webkit-background-clip");
+                s.style.removeProperty("background-clip");
+                s.style.removeProperty("-webkit-text-fill-color");
+                scale = 1.04;
+              } else if (wordCov > 0) {
+                // Currently being swept - gradient only on this word
+                const pct = (wordCov * 100).toFixed(2);
+                s.style.backgroundImage = `linear-gradient(to right, white ${pct}%, rgba(255,255,255,0.28) ${pct}%)`;
+                s.style.setProperty("-webkit-background-clip", "text");
+                s.style.setProperty("background-clip", "text");
+                s.style.setProperty("-webkit-text-fill-color", "transparent");
+                s.style.removeProperty("color");
+                scale = 1 + 0.07 * Math.sin(wordCov * Math.PI) + 0.04 * wordCov;
+              } else {
+                // Not yet reached - dim
+                s.style.color = "rgba(255,255,255,0.28)";
+                s.style.removeProperty("background-image");
+                s.style.removeProperty("-webkit-background-clip");
+                s.style.removeProperty("background-clip");
+                s.style.removeProperty("-webkit-text-fill-color");
+                scale = 1;
+              }
+              s.style.transform = `scale(${scale.toFixed(4)})`;
+            }
+          } else {
+            // Word spans not committed yet - keep the container sweep moving
+            const p = Math.min(1, Math.max(0, (t - lineStart) / lineGap));
+            container.style.setProperty("--sweep", `${(p * 100).toFixed(2)}%`);
+          }
+        } else if (container) {
+          container.style.setProperty("--sweep", "0%");
+        }
+      }
+
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   useEffect(() => {
-    if (isExpanded && activeLyricIndex !== -1 && lyricsContainerRef.current) {
-      const container = lyricsContainerRef.current;
+    const container = lyricsContainerRef.current;
+    if (!container) return;
+
+    if (activeLyricIndex === -1) {
+      activeLineElRef.current = null;
+      return;
+    }
+
+    // DOM is committed — safe to find the real active word spans element
+    activeLineElRef.current = container.querySelector<HTMLElement>("[data-active-line-words]");
+
+    if (isExpanded) {
       const activeElement = container.querySelector(`[data-index="${activeLyricIndex}"]`) as HTMLElement;
       if (activeElement) {
         container.scrollTo({
@@ -184,9 +352,6 @@ export default function BottomPlayer() {
     }
   }, [activeLyricIndex, isExpanded]);
 
-  const POMODORO_TIME = 25 * 60;
-  const [timeLeft, setTimeLeft] = useState(POMODORO_TIME);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
 
   const initAudioContext = () => {
     if (!audioContextRef.current && audioRef.current) {
@@ -202,7 +367,6 @@ export default function BottomPlayer() {
       
       const source = ctx.createMediaElementSource(audioRef.current);
       sourceRef.current = source;
-      
       source.connect(analyser);
       analyser.connect(ctx.destination);
     }
@@ -231,8 +395,27 @@ export default function BottomPlayer() {
     }
   };
 
+  // Backfill duration into D1 for legacy tracks uploaded before it was extracted
+  const backfilledRef = useRef<Set<string>>(new Set());
+  const handleLoadedMetadata = () => {
+    const audio = audioRef.current;
+    if (!audio || !currentTrack) return;
+    const d = audio.duration;
+    if (Number.isFinite(d) && d > 0 && !currentTrack.duration && !backfilledRef.current.has(currentTrack.id)) {
+      backfilledRef.current.add(currentTrack.id);
+      saveDurationAction(currentTrack.id, d).catch(() => {});
+    }
+  };
+
   const handleEnded = () => {
-    playNextTrack();
+    // Repeat-one: restart the same track instead of advancing
+    if (repeatMode === "one" && audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => {});
+      setIsPlaying(true);
+      return;
+    }
+    playNextTrack(true);
   };
 
   useEffect(() => {
@@ -270,6 +453,15 @@ export default function BottomPlayer() {
   // Minimal bar visualizer logic
   useEffect(() => {
     if (isExpanded) return;
+
+    // Read the theme accent so the played bars match the rest of the UI
+    let ar = 20, ag = 184, ab = 166; // fallback teal
+    try {
+      const hex = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+      const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+      if (m) { ar = parseInt(m[1].slice(0, 2), 16); ag = parseInt(m[1].slice(2, 4), 16); ab = parseInt(m[1].slice(4, 6), 16); }
+    } catch {}
+
     let animationFrame: number;
     const renderFrame = () => {
       animationFrame = requestAnimationFrame(renderFrame);
@@ -299,7 +491,7 @@ export default function BottomPlayer() {
         const currentProgressIdx = duration ? (progress / duration) * bufferLength : 0;
         
         if (i < currentProgressIdx) {
-           ctx.fillStyle = `rgba(236, 72, 153, ${Math.max(0.4, barHeight / 100)})`;
+           ctx.fillStyle = `rgba(${ar}, ${ag}, ${ab}, ${Math.max(0.4, barHeight / 100)})`;
         } else {
            ctx.fillStyle = `rgba(148, 163, 184, ${Math.max(0.1, barHeight / 150)})`;
         }
@@ -312,23 +504,8 @@ export default function BottomPlayer() {
     return () => cancelAnimationFrame(animationFrame);
   }, [isExpanded]);
 
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isTimerRunning && timeLeft > 0) {
-      timer = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0) {
-      setIsTimerRunning(false);
-    }
-    return () => clearInterval(timer);
-  }, [isTimerRunning, timeLeft]);
-
-  const toggleTimer = (e: React.MouseEvent) => { e.stopPropagation(); setIsTimerRunning(!isTimerRunning); };
-  const resetTimer = (e: React.MouseEvent) => { e.stopPropagation(); setIsTimerRunning(false); setTimeLeft(POMODORO_TIME); };
-
   const rawUrl = currentTrack?.file_url || "";
-  const proxyUrl = rawUrl.includes(".r2.dev/")
+  const audioSrc = rawUrl.includes(".r2.dev/")
     ? `/api/audio/${rawUrl.split(".r2.dev/").pop()}`
     : rawUrl;
 
@@ -342,16 +519,17 @@ export default function BottomPlayer() {
     <>
       <audio
         ref={audioRef}
-        src={proxyUrl}
+        src={audioSrc}
         crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
         controlsList="nodownload"
       />
 
-      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {/*  EXPANDED PLAYER                                                   */}
-      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {isExpanded ? (
         <div 
           className="fixed inset-0 h-screen w-screen z-[100] flex flex-col bg-[#1e2535]/95 backdrop-blur-3xl overflow-hidden"
@@ -374,7 +552,7 @@ export default function BottomPlayer() {
             <NeuronVisualizer analyser={analyserRef.current} />
           </div>
 
-          {/* ── TOP BAR ─────────────────────────────────────────────────── */}
+          {/* â”€â”€ TOP BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <div className="relative z-10 flex items-center justify-between px-5 pt-5 pb-2 flex-shrink-0">
             {/* Close */}
             <button 
@@ -399,10 +577,10 @@ export default function BottomPlayer() {
             </button>
           </div>
 
-          {/* ── DESKTOP: side-by-side, MOBILE: tabbed ────────────────────── */}
+          {/* â”€â”€ DESKTOP: side-by-side, MOBILE: tabbed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <div className="relative z-10 flex-1 flex flex-col lg:flex-row overflow-hidden">
 
-            {/* ── MOBILE TAB SWITCHER (only when lyrics exist) ─────────── */}
+            {/* â”€â”€ MOBILE TAB SWITCHER (only when lyrics exist) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             {hasLyrics && (
               <div className="lg:hidden flex items-center bg-white/5 mx-5 rounded-xl p-1 gap-1 flex-shrink-0 mb-2">
                 <button
@@ -421,7 +599,7 @@ export default function BottomPlayer() {
               </div>
             )}
 
-            {/* ── PLAYER PANEL ─────────────────────────────────────────── */}
+            {/* â”€â”€ PLAYER PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div className={`flex flex-col items-center lg:flex-1 lg:flex lg:flex-col lg:items-center lg:justify-center px-6 pb-6 overflow-y-auto ${hasLyrics && activeTab === "lyrics" ? "hidden lg:flex" : "flex"}`}>
 
               {/* Cover Art */}
@@ -448,16 +626,44 @@ export default function BottomPlayer() {
 
                 {/* Title */}
                 <h2 className="font-black text-2xl sm:text-3xl text-white leading-tight mb-1.5 drop-shadow-lg px-4">
-                  {currentTrack.title}
+                  {cleanTitle(currentTrack.title)}
                 </h2>
 
                 {/* Artist */}
                 <p className="text-base text-teal-400 font-semibold drop-shadow-md">
                   {currentTrack.artist || currentTrack.category}
                 </p>
+
+                {/* Album / Year / Genre */}
+                {(currentTrack.album || currentTrack.year || currentTrack.genre) && (
+                  <div className="flex items-center justify-center flex-wrap gap-x-2 gap-y-1 mt-2.5">
+                    {currentTrack.album && (
+                      <span className="text-xs text-slate-400 font-medium truncate max-w-[180px]">
+                        {currentTrack.album}
+                      </span>
+                    )}
+                    {currentTrack.album && (currentTrack.year || currentTrack.genre) && (
+                      <span className="text-slate-600 text-xs">Â·</span>
+                    )}
+                    {currentTrack.year && (
+                      <span className="text-xs text-slate-500 font-medium tabular-nums">
+                        {currentTrack.year}
+                      </span>
+                    )}
+                    {currentTrack.year && currentTrack.genre && (
+                      <span className="text-slate-600 text-xs">Â·</span>
+                    )}
+                    {currentTrack.genre && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase"
+                        style={{ background: "rgba(255,255,255,0.08)", color: "#94a3b8" }}>
+                        {currentTrack.genre}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* ── PROGRESS BAR ─────────────────────────────────────── */}
+              {/* â”€â”€ PROGRESS BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
               <div className="w-full mb-5">
                 {/* Slider track */}
                 <div
@@ -486,14 +692,27 @@ export default function BottomPlayer() {
                 </div>
               </div>
 
-              {/* ── CONTROLS ─────────────────────────────────────────── */}
-              <div className="flex items-center justify-center gap-8 w-full mb-6">
+              {/* â”€â”€ CONTROLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+              <div className="flex items-center justify-center gap-5 sm:gap-7 w-full mb-6">
+                {/* Shuffle */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleShuffle(); }}
+                  className="transition-all active:scale-90 hover:scale-110"
+                  style={{ color: shuffle ? "#2dd4bf" : "#94a3b8" }}
+                  title={shuffle ? "Shuffle: on" : "Shuffle: off"}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+                  </svg>
+                  {shuffle && <span className="block mx-auto mt-1 w-1 h-1 rounded-full bg-teal-400" />}
+                </button>
+
                 {/* Prev */}
                 <button
                   onClick={(e) => { e.stopPropagation(); playPrevTrack(); }}
                   className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110"
                 >
-                  <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
                   </svg>
                 </button>
@@ -519,15 +738,30 @@ export default function BottomPlayer() {
                   onClick={(e) => { e.stopPropagation(); playNextTrack(); }}
                   className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110"
                 >
-                  <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
                   </svg>
                 </button>
+
+                {/* Repeat */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleRepeat(); }}
+                  className="relative transition-all active:scale-90 hover:scale-110"
+                  style={{ color: repeatMode !== "off" ? "#2dd4bf" : "#94a3b8" }}
+                  title={`Repeat: ${repeatMode}`}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
+                  </svg>
+                  {repeatMode === "one" && (
+                    <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-teal-400 text-[8px] font-black text-[#1e2535] flex items-center justify-center">1</span>
+                  )}
+                  {repeatMode === "all" && <span className="block mx-auto mt-1 w-1 h-1 rounded-full bg-teal-400" />}
+                </button>
               </div>
 
-              {/* ── EXTRA CONTROLS ────────────────────────────────────── */}
-              <div className="flex items-center justify-between w-full px-2 gap-4">
-                {/* Volume */}
+              {/* â”€â”€ EXTRA CONTROLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+              <div className="flex items-center w-full px-2">
                 <div className="flex items-center gap-2 text-slate-400" onClick={e => e.stopPropagation()}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
@@ -542,29 +776,10 @@ export default function BottomPlayer() {
                     className="w-24 h-1 accent-teal-400 bg-slate-700 rounded-full appearance-none outline-none cursor-pointer"
                   />
                 </div>
-
-                {/* Pomodoro timer */}
-                <div className="flex items-center gap-2 text-slate-400" onClick={e => e.stopPropagation()}>
-                  <button
-                    onClick={toggleTimer}
-                    className={`flex items-center gap-1.5 text-xs font-mono transition-colors hover:text-white ${isTimerRunning ? "text-teal-400" : ""}`}
-                    title="Toggle Pomodoro Timer"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0012 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
-                    </svg>
-                    {formatTime(timeLeft)}
-                  </button>
-                  <button onClick={resetTimer} className="hover:text-white transition-colors" title="Reset Timer">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
-                    </svg>
-                  </button>
-                </div>
               </div>
             </div>
 
-            {/* ── LYRICS PANEL ─────────────────────────────────────────── */}
+            {/* â”€â”€ LYRICS PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             {hasLyrics && (
               <div className={`lg:flex-1 lg:flex lg:flex-col lg:justify-center overflow-hidden px-6 pb-6 ${activeTab === "player" ? "hidden lg:flex" : "flex flex-col"}`}>
                 <div
@@ -578,21 +793,60 @@ export default function BottomPlayer() {
                     ref={lyricsContainerRef}
                     className="h-full overflow-y-auto scrollbar-hide py-32 text-center lg:text-left scroll-smooth px-4 lg:px-8"
                   >
-                    <h3 className="text-[10px] font-black tracking-[0.4em] text-teal-400 uppercase mb-8 flex items-center justify-center lg:justify-start gap-2">
-                      Lyrics
-                      {isFetchingLyrics && (
-                        <span className="flex items-center gap-1 text-[9px] normal-case tracking-normal text-slate-400 font-normal">
-                          <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
-                          Auto-syncing...
-                        </span>
+                    <div className="flex items-center justify-between mb-8">
+                      <h3 className="text-[10px] font-black tracking-[0.4em] text-teal-400 uppercase flex items-center gap-2">
+                        Lyrics
+                        {isFetchingLyrics && (
+                          <span className="flex items-center gap-1 text-[9px] normal-case tracking-normal text-slate-400 font-normal">
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
+                            Auto-syncing...
+                          </span>
+                        )}
+                      </h3>
+                      {parsedLyrics && (
+                        <div className="flex items-center gap-1" title="Sync offset — shift lyrics earlier or later to match audio">
+                          <button
+                            onClick={() => adjustOffset(-0.5)}
+                            className="w-6 h-6 rounded-lg text-slate-300 hover:text-white transition-all flex items-center justify-center active:scale-90"
+                            style={{ background: "rgba(255,255,255,0.1)" }}
+                            title="Lyrics earlier"
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H5v-2h14v2z" /></svg>
+                          </button>
+                          <div className="flex items-center gap-1 min-w-[54px] justify-center">
+                            <span className="text-[10px] font-mono tabular-nums text-slate-300 select-none">
+                              {lyricsOffset > 0 ? "+" : ""}{lyricsOffset.toFixed(1)}s
+                            </span>
+                            {lyricsOffset !== 0 && (
+                              <button
+                                onClick={() => adjustOffset(-lyricsOffset)}
+                                className="text-slate-500 hover:text-teal-400 transition-colors flex items-center"
+                                title="Reset to 0"
+                              >
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" /></svg>
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => adjustOffset(+0.5)}
+                            className="w-6 h-6 rounded-lg text-slate-300 hover:text-white transition-all flex items-center justify-center active:scale-90"
+                            style={{ background: "rgba(255,255,255,0.1)" }}
+                            title="Lyrics later"
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>
+                          </button>
+                        </div>
                       )}
-                    </h3>
+                    </div>
 
                     {parsedLyrics ? (
-                      <div className="flex flex-col gap-5 pb-32">
+                      <div className="flex flex-col pb-32">
                         {parsedLyrics.map((lyric, idx) => {
                           const isActive = activeLyricIndex === idx;
                           const isPassed = activeLyricIndex > idx;
+                          const isFuture = !isActive && !isPassed;
+                          const dist = Math.abs(idx - activeLyricIndex);
+
                           return (
                             <div
                               key={idx}
@@ -600,15 +854,43 @@ export default function BottomPlayer() {
                               onClick={() => {
                                 if (audioRef.current) audioRef.current.currentTime = lyric.time;
                               }}
-                              className={`origin-center lg:origin-left text-xl sm:text-2xl lg:text-3xl font-extrabold leading-snug cursor-pointer transition-all duration-500 ${
-                                isActive
-                                  ? 'text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.5)] scale-105'
-                                  : isPassed
-                                    ? 'text-white/35 scale-100'
-                                    : 'text-white/15 blur-[1px] hover:blur-none hover:text-white/30 scale-100'
-                              }`}
+                              className="cursor-pointer origin-left lg:origin-left origin-center"
+                              style={{
+                                transition: "transform 550ms cubic-bezier(0.22,1,0.36,1), opacity 450ms cubic-bezier(0.22,1,0.36,1), filter 450ms ease, margin 550ms cubic-bezier(0.22,1,0.36,1)",
+                                transform: isActive ? "scale(1)" : `scale(${Math.max(0.78, 0.88 - dist * 0.03)})`,
+                                opacity: isActive ? 1 : isPassed ? Math.max(0.18, 0.45 - dist * 0.08) : Math.max(0.12, 0.35 - dist * 0.07),
+                                filter: isActive ? "blur(0px)" : isFuture ? `blur(${Math.min(dist * 0.6, 2)}px)` : "blur(0px)",
+                                marginBottom: isActive ? "2.5rem" : "1.1rem",
+                                marginTop: isActive ? "0.75rem" : "0",
+                              }}
                             >
-                              {lyric.text}
+                              {isActive ? (
+                                /* â”€â”€ Apple Music sweep + per-word scale â”€â”€ */
+                                <span
+                                  data-active-line-words
+                                  className="text-2xl sm:text-3xl lg:text-4xl font-black leading-tight block"
+                                  style={{ color: "rgba(255,255,255,0.28)" }}
+                                >
+                                  {lyric.text.split(/\s+/).map((word, wi, arr) => (
+                                    <span
+                                      key={wi}
+                                      data-wi={wi}
+                                      data-syl={countSyllables(word)}
+                                      style={{
+                                        display: "inline-block",
+                                        transformOrigin: "center 80%",
+                                        marginRight: wi < arr.length - 1 ? "0.34em" : "0",
+                                      }}
+                                    >
+                                      {word}
+                                    </span>
+                                  ))}
+                                </span>
+                              ) : (
+                                <span className="text-xl sm:text-2xl lg:text-3xl font-extrabold leading-tight block text-white">
+                                  {lyric.text}
+                                </span>
+                              )}
                             </div>
                           );
                         })}
@@ -626,9 +908,9 @@ export default function BottomPlayer() {
         </div>
 
       ) : (
-        /* ═══════════════════════════════════════════════════════════════════ */
+        /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
         /*  MINI PLAYER (bottom bar)                                          */
-        /* ═══════════════════════════════════════════════════════════════════ */
+        /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
         <div 
           className="glass-panel fixed bottom-0 left-0 w-full h-auto min-h-[6rem] py-3 md:py-0 md:h-24 border-t-0 border-b-0 border-l-0 border-r-0 px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-50 gap-4 md:gap-0 cursor-pointer backdrop-blur-xl transition-colors shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
           onContextMenu={(e) => e.preventDefault()}
@@ -641,7 +923,7 @@ export default function BottomPlayer() {
             </div>
             <div className="flex flex-col overflow-hidden flex-1 min-w-0">
               <div className="font-bold text-sm truncate flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-                <span className="truncate">{currentTrack.title}</span>
+                <span className="truncate">{cleanTitle(currentTrack.title)}</span>
                 {currentTrack.file_url && (currentTrack.file_url.endsWith('.flac') || currentTrack.file_url.endsWith('.wav')) && (
                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-wider border border-white/20 shadow-[0_0_10px_rgba(45,212,191,0.3)] flex-shrink-0">HI-RES</span>
                 )}
@@ -667,7 +949,8 @@ export default function BottomPlayer() {
               </button>
               <button
                 onClick={togglePlay}
-                className="w-10 h-10 rounded-full bg-gradient-to-tr from-pink-500 to-purple-500 text-white flex items-center justify-center hover:scale-105 transition-transform shadow-[0_0_15px_rgba(236,72,153,0.4)]"
+                className="w-10 h-10 rounded-full text-white flex items-center justify-center hover:scale-105 transition-transform"
+                style={{ background: "var(--accent)", boxShadow: "0 0 15px var(--accent-glow)" }}
               >
                 {isPlaying ? (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
@@ -698,7 +981,7 @@ export default function BottomPlayer() {
 
                 <div className="absolute inset-0 w-full h-full opacity-0 group-hover:opacity-100 flex items-center transition-opacity">
                   <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
-                    <div className="h-full bg-pink-500" style={{ width: `${progressPercent}%` }}></div>
+                    <div className="h-full" style={{ width: `${progressPercent}%`, background: "var(--accent)" }}></div>
                   </div>
                 </div>
                 
@@ -713,18 +996,7 @@ export default function BottomPlayer() {
           </div>
 
           {/* Extra controls */}
-          <div className="hidden md:flex items-center justify-end gap-6 w-1/3 order-2 md:order-3" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3">
-              <button onClick={toggleTimer} className="hover:opacity-80 transition-opacity flex items-center gap-2" title="Toggle Pomodoro Timer" style={{ color: "var(--text-muted)" }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0012 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
-                <span className={`text-sm font-mono`} style={{ color: isTimerRunning ? "var(--accent)" : "inherit" }}>
-                  {formatTime(timeLeft)}
-                </span>
-              </button>
-              <button onClick={resetTimer} className="hover:opacity-80 transition-opacity" title="Reset Timer" style={{ color: "var(--text-muted)" }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
-              </button>
-            </div>
+          <div className="hidden md:flex items-center justify-end gap-4 w-1/3 order-2 md:order-3" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
               <input

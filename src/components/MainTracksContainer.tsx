@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import FavoriteButton from "./FavoriteButton";
 import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
+import { cleanTitle } from "@/lib/cleanTitle";
+import { moveTrackToPlaylistAction } from "@/app/actions/tracks";
 
 // Generate a consistent index from a string
 function hashString(str: string): number {
@@ -13,6 +16,13 @@ function hashString(str: string): number {
     hash |= 0;
   }
   return Math.abs(hash);
+}
+
+function formatDuration(secs?: number): string {
+  if (!secs || !Number.isFinite(secs) || secs <= 0) return "";
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
 }
 
 // Beautiful gradient palettes for track covers
@@ -31,15 +41,10 @@ const COVER_PALETTES = [
 
 // SVG icon paths for different music icons
 const MUSIC_ICONS = [
-  // music note
   "M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z",
-  // headphone
   "M12 1c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z",
-  // equalizer
   "M10 20h4V4h-4v16zm-6 0h4v-8H4v8zM16 9v11h4V9h-4z",
-  // vinyl record
   "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 7.5 12 7.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm0-5.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z",
-  // speaker
   "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z",
 ];
 
@@ -60,21 +65,25 @@ function TrackCoverArt({ title, category, coverUrl }: { title: string; category:
         background: `linear-gradient(135deg, ${palette.from}, ${palette.to})`,
       }}
     >
-      {/* soft glow circle */}
       <div
         className="absolute w-10 h-10 rounded-full opacity-30"
         style={{ background: "white", filter: "blur(10px)" }}
       />
-      <svg
-        width="22"
-        height="22"
-        viewBox="0 0 24 24"
-        fill="white"
-        className="relative z-10 drop-shadow opacity-90"
-      >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="white" className="relative z-10 drop-shadow opacity-90">
         <path d={iconPath} />
       </svg>
     </div>
+  );
+}
+
+function Equalizer({ playing }: { playing: boolean }) {
+  return (
+    <span className={`flex items-end gap-[2px] h-3.5 ${playing ? "" : "eq-paused"}`}>
+      <span className="eq-bar" />
+      <span className="eq-bar" />
+      <span className="eq-bar" />
+      <span className="eq-bar" />
+    </span>
   );
 }
 
@@ -92,19 +101,64 @@ export default function MainTracksContainer({
   isLoggedIn: boolean;
 }) {
   const url = currentCategory ? `/api/tracks?category=${encodeURIComponent(currentCategory)}` : null;
-  const { playTrack } = usePlayer();
-  
-  // Use SWR for polling (refresh every 3 seconds). Fallback to initialTracks.
-  const { data } = useSWR(url, fetcher, { 
-    refreshInterval: 3000,
-    fallbackData: { tracks: initialTracks }
+  const { playTrack, tracks: playerTracks, currentTrackIndex, isPlaying } = usePlayer();
+
+  const { data, mutate } = useSWR(url, fetcher, {
+    fallbackData: { tracks: initialTracks },
+    revalidateOnFocus: false,
   });
+
+  // Playlists for the "Move to playlist" menu
+  const { data: playlistData } = useSWR(isLoggedIn ? "/api/playlists" : null, fetcher, {
+    revalidateOnFocus: false,
+  });
+  const playlists: { id: string; name: string }[] = playlistData?.playlists || [];
 
   const displayTracks: Track[] = data?.tracks || initialTracks;
 
+  const currentPlayingId = playerTracks[currentTrackIndex]?.id;
+
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [movingId, setMovingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  async function handleMove(track: Track, playlistName: string) {
+    setMenuOpenId(null);
+    setMovingId(track.id);
+    const res = await moveTrackToPlaylistAction(track.id, playlistName);
+    setMovingId(null);
+    if (res.success) {
+      setToast(`Moved to "${playlistName}"`);
+      setTimeout(() => setToast(null), 2500);
+      // If we're viewing a specific category and the track left it, drop it locally
+      if (currentCategory && currentCategory !== playlistName) {
+        mutate({ tracks: displayTracks.filter((t) => t.id !== track.id) }, false);
+      } else {
+        mutate();
+      }
+    } else {
+      setToast(res.error || "Failed to move");
+      setTimeout(() => setToast(null), 2500);
+    }
+  }
+
   return (
     <>
-      {/* Tracklist Preview */}
+      {/* Click-away backdrop for the menu */}
+      {menuOpenId && (
+        <div className="fixed inset-0 z-40" onClick={() => setMenuOpenId(null)} />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div
+          className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[120] px-4 py-2.5 rounded-xl text-sm font-semibold shadow-2xl"
+          style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)", color: "var(--text-primary)" }}
+        >
+          {toast}
+        </div>
+      )}
+
       <div className="flex flex-col gap-4">
         {displayTracks.length === 0 ? (
           <p className="text-slate-400">No tracks found. Upload some via the Admin panel.</p>
@@ -112,49 +166,142 @@ export default function MainTracksContainer({
           <div className="flex flex-col gap-2">
             {displayTracks.map((track, idx) => {
               const isFavorited = userFavorites.includes(track.id);
+              const isCurrent = !!currentPlayingId && track.id === currentPlayingId;
+              const dur = formatDuration(track.duration);
+
               return (
-                <div 
-                  key={track.id} 
-                  className="track-row flex items-center justify-between p-3 rounded-xl cursor-pointer group"
+                <div
+                  key={track.id}
+                  className="track-row flex items-center gap-4 px-3 py-2.5 rounded-xl cursor-pointer group"
                   onClick={() => playTrack(displayTracks, idx)}
+                  style={
+                    isCurrent
+                      ? { background: "var(--accent-glow)", borderColor: "var(--border-card)" }
+                      : undefined
+                  }
                 >
-                  {/* Left Side: Cover Art + Title + Category */}
-                  <div className="flex items-center gap-4 w-1/2">
-                    <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-md transition-shadow group-hover:shadow-lg">
-                      <TrackCoverArt title={track.title} category={track.category} coverUrl={track.cover_url} />
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white" className="ml-0.5">
-                          <path d="M8 5v14l11-7z"/>
+                  {/* Index / Equalizer / Play */}
+                  <span className="w-5 flex items-center justify-center flex-shrink-0">
+                    {isCurrent ? (
+                      <Equalizer playing={isPlaying} />
+                    ) : (
+                      <>
+                        <span
+                          className="text-right text-xs font-mono group-hover:hidden w-full"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {idx + 1}
+                        </span>
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          className="hidden group-hover:block"
+                          style={{ color: "var(--accent)" }}
+                        >
+                          <path d="M8 5v14l11-7z" />
                         </svg>
-                      </div>
-                    </div>
-                    <div className="flex flex-col overflow-hidden">
-                      <span className="font-bold text-sm truncate transition-colors group-hover:text-[var(--accent)]"
-                        style={{ color: "var(--text-primary)" }}>
-                        {track.title}
-                        {track.file_url && (track.file_url.endsWith('.flac') || track.file_url.endsWith('.wav')) && (
-                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-wider border border-white/20 align-middle">HI-RES</span>
-                        )}
+                      </>
+                    )}
+                  </span>
+
+                  {/* Cover */}
+                  <div className="relative w-11 h-11 rounded-md overflow-hidden flex-shrink-0 shadow-sm">
+                    <TrackCoverArt title={track.title} category={track.category} coverUrl={track.cover_url} />
+                  </div>
+
+                  {/* Title + Artist */}
+                  <div className="flex flex-col overflow-hidden flex-1 min-w-0">
+                    <span
+                      className="font-semibold text-sm truncate transition-colors"
+                      style={{ color: isCurrent ? "var(--accent)" : "var(--text-primary)" }}
+                    >
+                      {cleanTitle(track.title)}
+                      {track.file_url && (track.file_url.endsWith(".flac") || track.file_url.endsWith(".wav")) && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-wider border border-white/20 align-middle">
+                          HI-RES
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+                      {track.artist || track.category}
+                    </span>
+                  </div>
+
+                  {/* Right side: duration + actions */}
+                  <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {dur && (
+                      <span className="text-xs font-mono tabular-nums hidden sm:block" style={{ color: "var(--text-muted)" }}>
+                        {dur}
                       </span>
-                      <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{track.artist || track.category}</span>
-                    </div>
-                  </div>
+                    )}
 
-                  {/* Middle: Duration */}
-                  <div className="w-16 text-center">
-                    <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>3:40</span>
-                  </div>
+                    <FavoriteButton trackId={track.id} initialIsFavorited={isFavorited} isLoggedIn={isLoggedIn} />
 
-                  {/* Right Side: Rating + Favorite + Menu */}
-                  <div className="flex items-center gap-4 justify-end w-1/4">
-                    <div className="hidden sm:flex items-center gap-1 text-xs font-bold text-yellow-500 opacity-40 group-hover:opacity-100 transition-opacity">
-                      3 <span className="text-[10px]">★</span>
-                    </div>
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      <FavoriteButton trackId={track.id} initialIsFavorited={isFavorited} isLoggedIn={isLoggedIn} />
-                    </div>
-                    <button className="font-bold tracking-widest pl-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                      style={{ color: "var(--text-muted)" }}>••</button>
+                    {/* ⋯ menu */}
+                    {isLoggedIn && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setMenuOpenId(menuOpenId === track.id ? null : track.id)}
+                          className="w-7 h-7 rounded-full flex items-center justify-center transition-all hover:bg-[var(--bg-card-hover)] sm:opacity-0 sm:group-hover:opacity-100"
+                          style={{ color: "var(--text-muted)" }}
+                          title="More options"
+                          disabled={movingId === track.id}
+                        >
+                          {movingId === track.id ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="animate-spin">
+                              <path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z" />
+                            </svg>
+                          ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+                            </svg>
+                          )}
+                        </button>
+
+                        {menuOpenId === track.id && (
+                          <div
+                            className="absolute right-0 top-9 z-50 w-52 rounded-xl py-2 shadow-2xl"
+                            style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+                          >
+                            <p
+                              className="px-3 py-1.5 text-[10px] font-bold tracking-[0.15em] uppercase"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              Move to playlist
+                            </p>
+                            {playlists.length === 0 ? (
+                              <p className="px-3 py-2 text-xs" style={{ color: "var(--text-muted)" }}>
+                                No playlists yet.
+                              </p>
+                            ) : (
+                              <div className="max-h-60 overflow-y-auto scrollbar-thin">
+                                {playlists.map((pl) => {
+                                  const isHere = track.category === pl.name;
+                                  return (
+                                    <button
+                                      key={pl.id}
+                                      onClick={() => !isHere && handleMove(track, pl.name)}
+                                      disabled={isHere}
+                                      className="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors hover:bg-[var(--bg-card-hover)] disabled:opacity-50"
+                                      style={{ color: "var(--text-primary)" }}
+                                    >
+                                      <span className="truncate">{pl.name}</span>
+                                      {isHere && (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--accent)" }}>
+                                          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                                        </svg>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );

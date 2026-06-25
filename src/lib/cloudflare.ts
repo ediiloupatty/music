@@ -1,4 +1,5 @@
 import { S3Client } from "@aws-sdk/client-s3";
+import { unstable_cache } from "next/cache";
 
 // --- Cloudflare R2 Client ---
 // Requires: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
@@ -81,19 +82,44 @@ export async function initializeD1Tables() {
       PRIMARY KEY (user_email, track_id)
     );
   `;
+  const playlistsTable = `
+    CREATE TABLE IF NOT EXISTS playlists (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      user_email TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
   try {
     await queryD1(tracksTable);
     await queryD1(favoritesTable);
     await queryD1(usersTable);
-    
+    await queryD1(playlistsTable);
+
     // Attempt to add new columns if they don't exist (SQLite doesn't support IF NOT EXISTS for ADD COLUMN natively via single statement, so we just catch errors if they already exist)
     try { await queryD1(`ALTER TABLE tracks ADD COLUMN artist TEXT;`); } catch(e) {}
     try { await queryD1(`ALTER TABLE tracks ADD COLUMN cover_url TEXT;`); } catch(e) {}
     try { await queryD1(`ALTER TABLE tracks ADD COLUMN lyrics TEXT;`); } catch(e) {}
-    
+    try { await queryD1(`ALTER TABLE tracks ADD COLUMN album TEXT;`); } catch(e) {}
+    try { await queryD1(`ALTER TABLE tracks ADD COLUMN year INTEGER;`); } catch(e) {}
+    try { await queryD1(`ALTER TABLE tracks ADD COLUMN genre TEXT;`); } catch(e) {}
+    try { await queryD1(`ALTER TABLE tracks ADD COLUMN duration REAL;`); } catch(e) {}
+    try { await queryD1(`ALTER TABLE tracks ADD COLUMN bit_depth INTEGER;`); } catch(e) {}
+    try { await queryD1(`ALTER TABLE tracks ADD COLUMN sample_rate INTEGER;`); } catch(e) {}
+
     console.log("Tables initialized successfully.");
   } catch (error) {
     console.error("Error initializing tables:", error);
+  }
+}
+
+export async function getPlaylists(): Promise<Playlist[]> {
+  try {
+    const rows = await queryD1("SELECT * FROM playlists ORDER BY created_at ASC");
+    return rows as Playlist[];
+  } catch (error) {
+    console.error("Error fetching playlists:", error);
+    return [];
   }
 }
 
@@ -105,26 +131,43 @@ export type Track = {
   artist?: string;
   cover_url?: string;
   lyrics?: string;
+  album?: string;
+  year?: number;
+  genre?: string;
+  duration?: number;
+  bit_depth?: number;
+  sample_rate?: number;
+};
+
+export type Playlist = {
+  id: string;
+  name: string;
+  user_email?: string;
+  created_at?: string;
 };
 
 // Fetch tracks based on category or fetch all if none provided
-export async function getTracksByCategory(category: string | null = null): Promise<Track[]> {
-  try {
-    let sql = "SELECT * FROM tracks ORDER BY created_at DESC";
-    let params: string[] = [];
+export const getTracksByCategory = unstable_cache(
+  async (category: string | null = null): Promise<Track[]> => {
+    try {
+      let sql = "SELECT * FROM tracks ORDER BY created_at DESC";
+      let params: string[] = [];
 
-    if (category) {
-      sql = "SELECT * FROM tracks WHERE category = ? ORDER BY created_at DESC";
-      params = [category];
+      if (category) {
+        sql = "SELECT * FROM tracks WHERE category = ? ORDER BY created_at DESC";
+        params = [category];
+      }
+
+      const rows = await queryD1(sql, params);
+      return rows as Track[];
+    } catch (error) {
+      console.error("Error fetching tracks:", error);
+      return [];
     }
-
-    const rows = await queryD1(sql, params);
-    return rows as Track[];
-  } catch (error) {
-    console.error("Error fetching tracks:", error);
-    return [];
-  }
-}
+  },
+  ["tracks-by-category"],
+  { revalidate: 30 }
+);
 
 export async function getUserFavorites(email: string): Promise<string[]> {
   try {

@@ -181,4 +181,27 @@
   .search-input::placeholder {
     color: var(--text-muted);
   }
+
+  /* Now-playing equalizer bars */
+  @keyframes eqbar {
+    0%, 100% { transform: scaleY(0.3); }
+    50%      { transform: scaleY(1); }
+  }
+  .eq-bar {
+    width: 2px;
+    height: 12px;
+    background: var(--accent);
+    border-radius: 1px;
+    transform-origin: bottom;
+    animation: eqbar 0.9s ease-in-out infinite;
+  }
+  .eq-bar:nth-child(1) { animation-delay: 0s;    height: 9px;  }
+  .eq-bar:nth-child(2) { animation-delay: 0.25s; height: 14px; }
+  .eq-bar:nth-child(3) { animation-delay: 0.5s;  height: 7px;  }
+  .eq-bar:nth-child(4) { animation-delay: 0.15s; height: 12px; }
+  /* Paused: drop the animation entirely so the static transform applies */
+  .eq-paused .eq-bar {
+    animation: none;
+    transform: scaleY(0.4);
+  }
 }
