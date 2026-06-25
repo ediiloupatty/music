@@ -66,12 +66,12 @@ export default async function Home({
           {/* Home */}
           <Link href="/" className="relative flex items-center justify-center w-full group py-1" title="Home">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"
-              style={{ color: "white", filter: "drop-shadow(0 0 8px rgba(255,255,255,0.6))" }}>
+              style={{ color: "var(--accent)" }}>
               <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
             </svg>
             <span
               className="absolute right-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-l-full"
-              style={{ background: "white", boxShadow: "0 0 8px rgba(255,255,255,0.7)" }}
+              style={{ background: "var(--accent)" }}
             />
             {/* Tooltip */}
             <span className="absolute left-full ml-3 px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
@@ -83,8 +83,7 @@ export default async function Home({
           {/* Favorites */}
           <Link href="/favorites" className="flex items-center justify-center w-full group py-1 relative" title="Favorites">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"
-              style={{ color: "var(--text-muted)" }}
-              className="group-hover:text-white transition-colors">
+              className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">
               <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
             </svg>
             <span className="absolute left-full ml-3 px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
@@ -96,8 +95,7 @@ export default async function Home({
           {/* Admin */}
           <Link href="/admin" className="flex items-center justify-center w-full group py-1 relative" title="Admin">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"
-              style={{ color: "var(--text-muted)" }}
-              className="group-hover:text-white transition-colors">
+              className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">
               <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.73 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
             </svg>
             <span className="absolute left-full ml-3 px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"

@@ -630,7 +630,7 @@ export default function BottomPlayer() {
         /*  MINI PLAYER (bottom bar)                                          */
         /* ═══════════════════════════════════════════════════════════════════ */
         <div 
-          className="glass-panel fixed bottom-0 left-0 w-full h-auto min-h-[6rem] py-3 md:py-0 md:h-24 border-t-0 border-b-0 border-l-0 border-r-0 px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-50 gap-4 md:gap-0 cursor-pointer bg-[#3B4252]/90 backdrop-blur-xl transition-colors shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
+          className="glass-panel fixed bottom-0 left-0 w-full h-auto min-h-[6rem] py-3 md:py-0 md:h-24 border-t-0 border-b-0 border-l-0 border-r-0 px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-50 gap-4 md:gap-0 cursor-pointer backdrop-blur-xl transition-colors shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
           onContextMenu={(e) => e.preventDefault()}
           onClick={() => setIsExpanded(true)}
         >
@@ -640,16 +640,16 @@ export default function BottomPlayer() {
               <LargeCoverArt title={currentTrack.title} category={currentTrack.category} coverUrl={currentTrack.cover_url} size="sm" />
             </div>
             <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-              <div className="font-bold text-white text-sm truncate flex items-center gap-2">
+              <div className="font-bold text-sm truncate flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
                 <span className="truncate">{currentTrack.title}</span>
                 {currentTrack.file_url && (currentTrack.file_url.endsWith('.flac') || currentTrack.file_url.endsWith('.wav')) && (
                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-wider border border-white/20 shadow-[0_0_10px_rgba(45,212,191,0.3)] flex-shrink-0">HI-RES</span>
                 )}
               </div>
-              <div className="text-xs text-slate-400 truncate">{currentTrack.artist || currentTrack.category}</div>
+              <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{currentTrack.artist || currentTrack.category}</div>
             </div>
             <div className="ml-auto md:hidden">
-              <button onClick={(e) => { e.stopPropagation(); setIsExpanded(true); }} className="text-slate-400">
+              <button onClick={(e) => { e.stopPropagation(); setIsExpanded(true); }} style={{ color: "var(--text-muted)" }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z"/>
                 </svg>
@@ -662,7 +662,7 @@ export default function BottomPlayer() {
             
             {/* Play Controls */}
             <div className="flex items-center gap-4 flex-shrink-0">
-              <button onClick={playPrevTrack} className="text-slate-400 hover:text-white transition-colors">
+              <button onClick={playPrevTrack} className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
               </button>
               <button
@@ -675,14 +675,14 @@ export default function BottomPlayer() {
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="ml-1"><path d="M8 5v14l11-7z"/></svg>
                 )}
               </button>
-              <button onClick={playNextTrack} className="text-slate-400 hover:text-white transition-colors">
+              <button onClick={playNextTrack} className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
               </button>
             </div>
 
             {/* Visualizer Waveform / Progress */}
             <div className="flex-1 flex items-center gap-4 min-w-0">
-              <span className="text-xs text-slate-500 font-mono w-10 text-right">{formatTime(progress)}</span>
+              <span className="text-xs font-mono w-10 text-right" style={{ color: "var(--text-muted)" }}>{formatTime(progress)}</span>
               
               <div className="h-10 flex-1 relative flex items-center cursor-pointer group"
                    onClick={(e) => {
@@ -708,24 +708,24 @@ export default function BottomPlayer() {
                 ></div>
               </div>
 
-              <span className="text-xs text-slate-500 font-mono w-10">{formatTime(duration)}</span>
+              <span className="text-xs font-mono w-10" style={{ color: "var(--text-muted)" }}>{formatTime(duration)}</span>
             </div>
           </div>
 
           {/* Extra controls */}
-          <div className="hidden md:flex items-center justify-end gap-6 w-1/3 order-2 md:order-3 text-slate-400" onClick={e => e.stopPropagation()}>
+          <div className="hidden md:flex items-center justify-end gap-6 w-1/3 order-2 md:order-3" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
-              <button onClick={toggleTimer} className="hover:text-white transition-colors flex items-center gap-2" title="Toggle Pomodoro Timer">
+              <button onClick={toggleTimer} className="hover:opacity-80 transition-opacity flex items-center gap-2" title="Toggle Pomodoro Timer" style={{ color: "var(--text-muted)" }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0012 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
-                <span className={`text-sm font-mono ${isTimerRunning ? "text-teal-400" : ""}`}>
+                <span className={`text-sm font-mono`} style={{ color: isTimerRunning ? "var(--accent)" : "inherit" }}>
                   {formatTime(timeLeft)}
                 </span>
               </button>
-              <button onClick={resetTimer} className="text-slate-400 hover:text-white transition-colors" title="Reset Timer">
+              <button onClick={resetTimer} className="hover:opacity-80 transition-opacity" title="Reset Timer" style={{ color: "var(--text-muted)" }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
               </button>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
               <input
                 type="range"
@@ -734,7 +734,8 @@ export default function BottomPlayer() {
                 step="0.01"
                 value={volume}
                 onChange={handleVolumeChange}
-                className="w-20 h-1 accent-white bg-slate-800 rounded-full appearance-none outline-none"
+                className="w-20 h-1 rounded-full appearance-none outline-none"
+                style={{ background: "var(--border-card)", accentColor: "var(--text-primary)" }}
               />
             </div>
           </div>

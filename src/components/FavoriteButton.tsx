@@ -38,10 +38,11 @@ export default function FavoriteButton({
     <button 
       onClick={handleToggle} 
       disabled={isPending}
-      className={`p-2 rounded-full transition-colors ${isFavorited ? 'text-red-500' : 'text-slate-500 hover:text-white'} disabled:opacity-50`}
+      className={`p-2 rounded-full transition-colors ${isFavorited ? 'text-red-500' : 'hover:opacity-80'} disabled:opacity-50`}
+      style={{ color: isFavorited ? undefined : "var(--text-muted)" }}
       title="Favorite"
     >
-      {isFavorited ? "❤️" : "🤍"}
+      {isFavorited ? "❤️" : <span style={{ filter: "grayscale(100%) brightness(200%) drop-shadow(0 0 1px rgba(0,0,0,0.5))" }}>🤍</span>}
     </button>
   );
 }
