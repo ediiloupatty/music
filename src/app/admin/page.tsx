@@ -56,6 +56,7 @@ export default function AdminPage() {
   const [selectedFiles, setSelectedFiles]   = useState<File[]>([]);
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0].value);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const { data, error, mutate } = useSWR("/api/tracks", fetcher, { refreshInterval: 5000 });
   const tracks = data?.tracks || [];
@@ -66,7 +67,13 @@ export default function AdminPage() {
     const arr = Array.from(files).filter(f =>
       /\.(mp3|flac|wav|m4a)$/i.test(f.name)
     );
-    if (arr.length) setSelectedFiles(arr);
+    if (arr.length) {
+      setSelectedFiles(prev => {
+        const existingNames = new Set(prev.map(f => f.name));
+        const newUniqueFiles = arr.filter(f => !existingNames.has(f.name));
+        return [...prev, ...newUniqueFiles];
+      });
+    }
   }
 
   function removeFile(idx: number) {
@@ -255,6 +262,16 @@ export default function AdminPage() {
                       className="hidden"
                       onChange={e => e.target.files && handleFiles(e.target.files)}
                     />
+                    <input
+                      ref={folderInputRef}
+                      type="file"
+                      accept=".mp3,audio/mpeg,.flac,audio/flac,.wav,audio/wav,.m4a,audio/mp4"
+                      // @ts-expect-error React webkitdirectory attribute
+                      webkitdirectory=""
+                      multiple
+                      className="hidden"
+                      onChange={e => e.target.files && handleFiles(e.target.files)}
+                    />
 
                     {selectedFiles.length > 0 ? (
                       /* ── File list ── */
@@ -285,13 +302,22 @@ export default function AdminPage() {
                           </div>
                         ))}
                         {/* Add more button */}
-                        <button type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-all"
-                          style={{ border: "1px dashed rgba(99,102,241,0.4)", color: "#818cf8" }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                          Add more files
-                        </button>
+                        <div className="flex gap-2">
+                          <button type="button"
+                            onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                            className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-all"
+                            style={{ border: "1px dashed rgba(99,102,241,0.4)", color: "#818cf8" }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                            Add Files
+                          </button>
+                          <button type="button"
+                            onClick={(e) => { e.stopPropagation(); folderInputRef.current?.click(); }}
+                            className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-all"
+                            style={{ border: "1px dashed rgba(20,184,166,0.4)", color: "#5eead4" }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>
+                            Add Folder
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       /* ── Empty drop zone ── */
@@ -302,9 +328,22 @@ export default function AdminPage() {
                             <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
                           </svg>
                         </div>
-                        <div className="text-center">
-                          <p className="font-bold text-white text-sm">Drop files here</p>
-                          <p className="text-xs mt-0.5" style={{ color: "rgba(148,163,184,0.5)" }}>or click to browse your device</p>
+                        <div className="text-center mt-2">
+                          <p className="font-bold text-white text-sm mb-2">Drop files or folder here</p>
+                          <div className="flex items-center justify-center gap-3">
+                            <button type="button"
+                              onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                              className="px-4 py-1.5 rounded-full text-xs font-semibold transition-all hover:scale-105 active:scale-95"
+                              style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc" }}>
+                              Browse Files
+                            </button>
+                            <button type="button"
+                              onClick={(e) => { e.stopPropagation(); folderInputRef.current?.click(); }}
+                              className="px-4 py-1.5 rounded-full text-xs font-semibold transition-all hover:scale-105 active:scale-95"
+                              style={{ background: "rgba(20,184,166,0.15)", color: "#5eead4" }}>
+                              Browse Folder
+                            </button>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           {["MP3","FLAC","WAV","M4A"].map(f => (
