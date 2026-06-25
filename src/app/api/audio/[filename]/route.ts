@@ -33,10 +33,17 @@ export async function GET(
     // Convert the AWS SDK stream to a Web ReadableStream
     const stream = response.Body.transformToWebStream();
 
+    const ext = filename.split('.').pop()?.toLowerCase();
+    let contentType = response.ContentType || "application/octet-stream";
+    if (ext === "mp3") contentType = "audio/mpeg";
+    else if (ext === "flac") contentType = "audio/flac";
+    else if (ext === "wav") contentType = "audio/wav";
+    else if (ext === "m4a") contentType = "audio/mp4";
+
     const headers = new Headers();
-    // Obfuscate content type to prevent IDM from easily detecting it as audio
-    headers.set("Content-Type", "application/octet-stream");
-    headers.set("Content-Disposition", "inline; filename=\"stream.dat\"");
+    headers.set("Content-Type", contentType);
+    // Allow inline playback without forcing download
+    headers.set("Content-Disposition", `inline; filename="${filename}"`);
     
     if (response.ContentLength) headers.set("Content-Length", response.ContentLength.toString());
     headers.set("Accept-Ranges", "bytes");
