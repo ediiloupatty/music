@@ -1,11 +1,11 @@
 # Implementation Plan (Vertical Slices / Kanban)
-**Project**: Focus Stream (Productivity Music Player)
+**Project**: Zenify (Productivity Music Player)
 
 Sesuai instruksi Anda, rencana implementasi ini menggunakan pendekatan **Vertical Slices (Tracer Bullets)**. Daripada membangun seluruh Database, lalu seluruh API, baru seluruh Frontend (horizontal), kita akan membangun fitur satu per satu secara utuh dari *back-end* hingga *front-end* agar selalu bisa dites pada setiap fasenya.
 
 ## 1. Goal Description
 
-Membangun aplikasi Focus Stream secara bertahap (iteratif) melalui potongan vertikal yang fungsional dan dapat langsung diuji (*testable*).
+Membangun aplikasi Zenify secara bertahap (iteratif) melalui potongan vertikal yang fungsional dan dapat langsung diuji (*testable*).
 
 ## 2. User Review Required
 

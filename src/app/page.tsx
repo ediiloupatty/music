@@ -6,12 +6,8 @@ import { auth, signOut } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
-const CATEGORIES = [
-  { id: "Deep Coding",      label: "Deep Coding",      desc: "Electronic, ambient.",  bgGradient: "from-blue-600 to-violet-800",   image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop" },
-  { id: "Creative Design",  label: "Creative Design",  desc: "Upbeat & inspiring.",   bgGradient: "from-amber-400 to-orange-500",  image: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=600&auto=format&fit=crop" },
-  { id: "Routine Tasks",    label: "Routine Tasks",    desc: "Energetic focus.",       bgGradient: "from-teal-300 to-emerald-500",  image: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?q=80&w=600&auto=format&fit=crop" },
-  { id: "Relax & Unwind",  label: "Relax & Unwind",   desc: "Calm melodies.",         bgGradient: "from-indigo-600 to-purple-700", image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=600&auto=format&fit=crop" },
-];
+import { CATEGORIES } from "@/lib/constants";
+import DynamicBackground from "@/components/DynamicBackground";
 
 export default async function Home({
   searchParams,
@@ -29,24 +25,22 @@ export default async function Home({
     : [];
 
   return (
-    <div className="flex h-screen text-slate-100 font-sans bg-[#0d0d12] overflow-hidden relative gap-2">
+    <div className="flex h-screen text-slate-100 font-sans bg-[#3B4252] overflow-hidden relative gap-2">
 
-      {/* Background glows */}
-      <div className="pointer-events-none absolute top-0 right-0 w-[700px] h-[700px] bg-gradient-to-bl from-rose-900/25 via-purple-900/10 to-transparent rounded-full blur-[130px]" />
-      <div className="pointer-events-none absolute bottom-0 left-0 w-[500px] h-[500px] bg-gradient-to-tr from-indigo-900/20 to-transparent rounded-full blur-[100px]" />
+      <DynamicBackground />
 
       {/* ─── DESKTOP SIDEBAR ──────────────────────────────────────────────── */}
       <aside className="hidden md:flex relative z-20 flex-col items-center w-[88px] py-7 flex-shrink-0 h-full border-r border-white/5 mr-8">
 
         {/* Avatar / logo */}
-        <div className="mb-10 w-11 h-11 rounded-full bg-gradient-to-br from-red-500 to-purple-600 border-2 border-white/10 shadow-[0_0_14px_rgba(239,68,68,0.35)] flex items-center justify-center flex-shrink-0 cursor-pointer relative">
+        <div className="mb-10 w-11 h-11 rounded-full bg-slate-800 border-2 border-teal-500/30 shadow-[0_0_14px_rgba(45,212,191,0.2)] flex items-center justify-center flex-shrink-0 cursor-pointer relative hover:border-teal-400 hover:shadow-[0_0_20px_rgba(45,212,191,0.4)] transition-all">
           {isLoggedIn ? (
             <span className="font-bold text-white text-sm">{session.user?.name?.charAt(0) || "U"}</span>
           ) : (
             <Image src="/logo.png" alt="Logo" width={44} height={44} className="object-cover opacity-80" />
           )}
           {isLoggedIn && (
-            <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#0d0d12]" />
+            <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-teal-500 rounded-full border-2 border-[#3B4252]" />
           )}
         </div>
 
@@ -115,9 +109,9 @@ export default async function Home({
           {/* Mobile Avatar / Logo */}
           <div className="md:hidden flex items-center justify-center flex-shrink-0">
             {isLoggedIn ? (
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-red-500 to-purple-600 flex items-center justify-center relative shadow-md">
+              <div className="w-9 h-9 rounded-full bg-slate-800 border border-teal-500/30 flex items-center justify-center relative shadow-md">
                 <span className="font-bold text-white text-xs">{session.user?.name?.charAt(0) || "U"}</span>
-                <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-[#0d0d12]" />
+                <span className="absolute top-0 right-0 w-2 h-2 bg-teal-500 rounded-full border border-[#3B4252]" />
               </div>
             ) : (
               <Link href="/login">
@@ -149,7 +143,7 @@ export default async function Home({
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="group-hover:scale-110 transition-transform">
               <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
             </svg>
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#0d0d12] animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+            <span className="absolute top-2 right-2 w-2 h-2 bg-teal-500 rounded-full border border-[#3B4252] animate-pulse shadow-[0_0_8px_rgba(45,212,191,0.6)]" />
           </button>
         </header>
 
@@ -161,29 +155,29 @@ export default async function Home({
             <div className="flex-1 min-w-0">
 
               {/* Playlists */}
-              <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center justify-between mb-1">
                 <h2 className="text-xl font-bold text-white tracking-wide">Playlists</h2>
                 <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors">More ›</a>
               </div>
 
-              <div className="flex gap-5 overflow-x-auto pb-3 snap-x hide-scrollbar -mx-1 px-1">
+              <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-6 pb-6 pt-4">
                 {CATEGORIES.map((cat) => {
                   const isActive = currentCategory === cat.id;
                   return (
                     <Link key={cat.id} href={`/?category=${encodeURIComponent(cat.id)}`}
-                      className="snap-start flex-shrink-0">
-                      <div className="flex flex-col w-[190px] group cursor-pointer">
+                      className="block">
+                      <div className="flex flex-col w-full group cursor-pointer text-center md:text-left">
                         {/* Card image area */}
-                        <div className={`w-[190px] h-[190px] rounded-2xl mb-3 shadow-lg overflow-hidden relative bg-gradient-to-br ${cat.bgGradient} transition-all duration-500 group-hover:-translate-y-2 group-hover:shadow-[0_12px_30px_rgba(0,0,0,0.5)] ${isActive ? 'ring-2 ring-white/60 shadow-[0_0_20px_rgba(255,255,255,0.15)]' : ''}`}>
+                        <div className={`w-full aspect-square rounded-2xl mb-3 shadow-lg overflow-hidden relative bg-gradient-to-br ${cat.bgGradient} transition-all duration-500 group-hover:-translate-y-2 group-hover:scale-105 group-hover:shadow-[0_12px_30px_rgba(0,0,0,0.6)] border border-transparent group-hover:border-teal-500/50 ${isActive ? 'ring-2 ring-teal-500/80 shadow-[0_0_20px_rgba(45,212,191,0.2)]' : ''}`}>
                           {/* overlay tint */}
-                          <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors duration-500 z-[1]" />
+                          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors duration-500 z-[1]" />
                           {/* background texture */}
-                          <img src={cat.image} alt="" className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-40 group-hover:opacity-60 group-hover:scale-110 transition-all duration-500 z-0" />
+                          <img src={cat.image} alt="" className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500 z-0" />
                           
                           {/* Play Button overlay */}
                           <div className="absolute bottom-3 right-3 z-[3] translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
                              <div className="w-10 h-10 rounded-full bg-teal-500 text-white flex items-center justify-center shadow-[0_0_15px_rgba(45,212,191,0.5)] hover:scale-110 hover:bg-teal-400 transition-all">
-                               <span className="ml-1 text-lg">▶</span>
+                               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5"><path d="M8 5v14l11-7z"/></svg>
                              </div>
                           </div>
 
@@ -218,9 +212,9 @@ export default async function Home({
             <div className="w-full lg:w-[280px] xl:w-[300px] flex flex-col gap-6 flex-shrink-0">
 
               {/* Upgrade banner */}
-              <div className="rounded-2xl p-6 relative overflow-hidden bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 shadow-[0_8px_30px_rgba(168,85,247,0.3)] min-h-[170px] group cursor-pointer hover:shadow-[0_8px_40px_rgba(236,72,153,0.5)] transition-shadow duration-500">
+              <div className="rounded-2xl p-6 relative overflow-hidden bg-gradient-to-br from-teal-900 via-slate-800 to-slate-900 border border-teal-500/20 shadow-[0_8px_30px_rgba(0,0,0,0.3)] min-h-[170px] group cursor-pointer hover:border-teal-500/50 hover:shadow-[0_8px_40px_rgba(45,212,191,0.2)] transition-all duration-500">
                 {/* Animated shine effect via translate */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1500ms] skew-x-12 z-10" />
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1500ms] skew-x-12 z-10" />
                 
                 <h3 className="text-xl font-extrabold text-white leading-snug drop-shadow-md z-20 relative">
                   Upgrade<br/>your account
@@ -231,25 +225,51 @@ export default async function Home({
                 </button>
               </div>
 
-              {/* Fav Artists */}
+              {/* Focus Stats */}
               <div>
-                <h2 className="text-base font-bold text-white tracking-wide mb-4">Fav Artists</h2>
+                <h2 className="text-base font-bold text-white tracking-wide mb-4">Your Focus Stats</h2>
                 <div className="flex flex-col gap-4">
                   {[
-                    { name: "Sia",        sub: "34 songs in library", rating: "5★", img: "https://images.unsplash.com/photo-1516280440502-861118742b78?q=80&w=150" },
-                    { name: "The Weeknd", sub: "29 songs in library", rating: "4★", img: "https://images.unsplash.com/photo-1506157786151-b8491531f063?q=80&w=150" },
-                    { name: "Lana Del Rey", sub: "12 songs in library", rating: "4★", img: "https://images.unsplash.com/photo-1493225457284-0bf53ce86e62?q=80&w=150" },
-                  ].map((artist) => (
-                    <div key={artist.name} className="flex items-center gap-3 group cursor-pointer p-2 -mx-2 rounded-xl hover:bg-white/5 transition-colors">
-                      <div className="relative w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 border-transparent group-hover:border-purple-500/50 transition-all duration-300 group-hover:shadow-[0_0_15px_rgba(168,85,247,0.4)]">
-                        <img src={artist.img} alt={artist.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                        <div className="absolute top-0 right-0 bg-pink-500 text-[8px] font-bold px-1 rounded-full border border-[#0d0d12] z-10">{artist.rating}</div>
+                    { 
+                      title: "Deep Work", 
+                      value: "12.5 hrs", 
+                      desc: "this week",
+                      icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7zm1-11h-2v5.25l4.5 2.67.75-1.23-3.75-2.22V8z"/></svg>,
+                      color: "from-blue-500 to-indigo-500" 
+                    },
+                    { 
+                      title: "Pomodoro Sessions", 
+                      value: "24 cycles", 
+                      desc: "completed",
+                      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0012 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>,
+                      color: "from-teal-400 to-teal-600" 
+                    },
+                    { 
+                      title: "Focus Streak", 
+                      value: "5 days", 
+                      desc: "in a row",
+                      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/></svg>,
+                      color: "from-orange-400 to-rose-500" 
+                    },
+                  ].map((stat) => (
+                    <div key={stat.title} className="flex items-center gap-4 group cursor-pointer p-3 -mx-3 rounded-2xl hover:bg-white/5 border border-transparent hover:border-white/10 transition-all">
+                      <div className={`relative w-12 h-12 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center flex-shrink-0 shadow-lg group-hover:scale-110 transition-transform duration-300`}>
+                        <div className="text-white drop-shadow-md z-10">
+                          {stat.icon}
+                        </div>
+                        {/* Glow effect */}
+                        <div className={`absolute inset-0 bg-gradient-to-br ${stat.color} blur-md opacity-0 group-hover:opacity-40 transition-opacity duration-300 rounded-xl`} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-sm text-white leading-tight group-hover:text-purple-300 transition-colors">{artist.name}</h4>
-                        <p className="text-xs text-slate-400">{artist.sub}</p>
+                        <h4 className="font-bold text-sm text-white leading-tight group-hover:text-teal-300 transition-colors">{stat.title}</h4>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span className="text-sm font-extrabold text-slate-200">{stat.value}</span>
+                          <span className="text-xs text-slate-400">{stat.desc}</span>
+                        </div>
                       </div>
-                      <button className="text-slate-600 hover:text-slate-300 transition-colors text-sm font-bold opacity-0 group-hover:opacity-100">•••</button>
+                      <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-slate-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-white/10 hover:text-white">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+                      </div>
                     </div>
                   ))}
                 </div>

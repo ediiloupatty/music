@@ -24,16 +24,16 @@ class Particle {
   }
 
   update(width: number, height: number, audioIntensity: number) {
-    // Move particle
-    this.x += this.vx * (1 + audioIntensity * 2);
-    this.y += this.vy * (1 + audioIntensity * 2);
+    // Move particle faster on beats
+    this.x += this.vx * (1 + audioIntensity * 5);
+    this.y += this.vy * (1 + audioIntensity * 5);
 
     // Bounce off edges
     if (this.x < 0 || this.x > width) this.vx *= -1;
     if (this.y < 0 || this.y > height) this.vy *= -1;
 
-    // React to audio
-    this.size = this.baseSize + (audioIntensity * 8);
+    // React to audio (more dramatic size changes)
+    this.size = this.baseSize + (audioIntensity * 15);
   }
 
   draw(ctx: CanvasRenderingContext2D) {
@@ -77,8 +77,8 @@ export default function NeuronVisualizer({ analyser }: NeuronVisualizerProps) {
     const draw = () => {
       animationFrameId = requestAnimationFrame(draw);
       
-      // Clear canvas with deep dark transparent color
-      ctx.fillStyle = "rgba(2, 6, 23, 0.2)"; // slate-950 equivalent
+      // Clear canvas with deep dark transparent color matching #3B4252
+      ctx.fillStyle = "rgba(59, 66, 82, 0.2)"; // #3B4252 equivalent
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Get audio data if available
@@ -92,7 +92,8 @@ export default function NeuronVisualizer({ analyser }: NeuronVisualizerProps) {
           sum += dataArray[i];
         }
         const avg = sum / bassCount;
-        audioIntensity = avg / 255; // Normalized between 0 and 1
+        // Exaggerate beats by squaring the normalized value
+        audioIntensity = Math.pow(avg / 255, 2);
       }
 
       // Update & draw particles
@@ -108,9 +109,10 @@ export default function NeuronVisualizer({ analyser }: NeuronVisualizerProps) {
 
           if (distance < 150) {
             ctx.beginPath();
-            const opacity = (1 - distance / 150) * (0.2 + audioIntensity * 0.8);
-            ctx.strokeStyle = `rgba(168, 85, 247, ${opacity})`; // Purple glow
-            ctx.lineWidth = 1 + (audioIntensity * 2);
+            const opacity = (1 - distance / 150) * (0.1 + audioIntensity * 0.9);
+            // Teal/cyan glow matching the theme instead of purple
+            ctx.strokeStyle = `rgba(45, 212, 191, ${opacity})`; 
+            ctx.lineWidth = 1 + (audioIntensity * 3);
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
             ctx.stroke();

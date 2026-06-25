@@ -58,6 +58,9 @@ export async function initializeD1Tables() {
       title TEXT NOT NULL,
       category TEXT NOT NULL,
       file_url TEXT NOT NULL,
+      artist TEXT,
+      cover_url TEXT,
+      lyrics TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `;
@@ -82,6 +85,12 @@ export async function initializeD1Tables() {
     await queryD1(tracksTable);
     await queryD1(favoritesTable);
     await queryD1(usersTable);
+    
+    // Attempt to add new columns if they don't exist (SQLite doesn't support IF NOT EXISTS for ADD COLUMN natively via single statement, so we just catch errors if they already exist)
+    try { await queryD1(`ALTER TABLE tracks ADD COLUMN artist TEXT;`); } catch(e) {}
+    try { await queryD1(`ALTER TABLE tracks ADD COLUMN cover_url TEXT;`); } catch(e) {}
+    try { await queryD1(`ALTER TABLE tracks ADD COLUMN lyrics TEXT;`); } catch(e) {}
+    
     console.log("Tables initialized successfully.");
   } catch (error) {
     console.error("Error initializing tables:", error);
@@ -93,6 +102,9 @@ export type Track = {
   title: string;
   category: string;
   file_url: string;
+  artist?: string;
+  cover_url?: string;
+  lyrics?: string;
 };
 
 // Fetch tracks based on category or fetch all if none provided

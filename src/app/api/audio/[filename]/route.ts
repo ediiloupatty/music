@@ -34,9 +34,14 @@ export async function GET(
     const stream = response.Body.transformToWebStream();
 
     const headers = new Headers();
-    if (response.ContentType) headers.set("Content-Type", response.ContentType);
+    // Obfuscate content type to prevent IDM from easily detecting it as audio
+    headers.set("Content-Type", "application/octet-stream");
+    headers.set("Content-Disposition", "inline; filename=\"stream.dat\"");
+    
     if (response.ContentLength) headers.set("Content-Length", response.ContentLength.toString());
     headers.set("Accept-Ranges", "bytes");
+    headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    headers.set("Pragma", "no-cache");
 
     return new NextResponse(stream, { headers });
   } catch (error: any) {

@@ -29,9 +29,9 @@ export default function SignupPage() {
         <div className="flex items-center justify-center gap-3 mb-8">
           <Link href="/" className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-slate-800">
-              <Image src="/logo.png" alt="Focus Stream Logo" width={40} height={40} className="object-cover" />
+              <Image src="/logo.png" alt="Zenify Logo" width={40} height={40} className="object-cover" />
             </div>
-            <h1 className="text-2xl font-bold tracking-wide text-white hover:text-teal-400 transition-colors">Focus Stream</h1>
+            <h1 className="text-2xl font-bold tracking-wide text-white hover:text-teal-400 transition-colors">Zenify</h1>
           </Link>
         </div>
 
