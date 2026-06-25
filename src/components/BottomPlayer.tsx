@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Track } from "@/lib/cloudflare";
@@ -958,7 +958,7 @@ export default function BottomPlayer() {
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="ml-1"><path d="M8 5v14l11-7z"/></svg>
                 )}
               </button>
-              <button onClick={playNextTrack} className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
+              <button onClick={() => playNextTrack()} className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
               </button>
             </div>
