@@ -37,7 +37,9 @@ export default async function Home({
           {isLoggedIn ? (
             <span className="font-bold text-white text-sm">{session.user?.name?.charAt(0) || "U"}</span>
           ) : (
-            <Image src="/logo.png" alt="Logo" width={44} height={44} className="object-cover opacity-80" />
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-slate-400 opacity-80">
+              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+            </svg>
           )}
           {isLoggedIn && (
             <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-teal-500 rounded-full border-2 border-[#3B4252]" />
@@ -114,8 +116,10 @@ export default async function Home({
                 <span className="absolute top-0 right-0 w-2 h-2 bg-teal-500 rounded-full border border-[#3B4252]" />
               </div>
             ) : (
-              <Link href="/login">
-                <Image src="/logo.png" alt="Logo" width={36} height={36} className="object-cover opacity-80" />
+              <Link href="/login" className="w-9 h-9 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center shadow-md hover:border-slate-400 transition-colors">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-slate-400">
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
               </Link>
             )}
           </div>
