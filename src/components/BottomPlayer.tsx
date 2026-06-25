@@ -557,7 +557,7 @@ export default function BottomPlayer() {
                 >
                   <div
                     ref={lyricsContainerRef}
-                    className="h-full overflow-y-auto scrollbar-hide py-32 text-center lg:text-left scroll-smooth px-2"
+                    className="h-full overflow-y-auto scrollbar-hide py-32 text-center lg:text-left scroll-smooth px-4 lg:px-8"
                   >
                     <h3 className="text-[10px] font-black tracking-[0.4em] text-teal-400 uppercase mb-8 flex items-center justify-center lg:justify-start gap-2">
                       Lyrics
@@ -581,12 +581,12 @@ export default function BottomPlayer() {
                               onClick={() => {
                                 if (audioRef.current) audioRef.current.currentTime = lyric.time;
                               }}
-                              className={`text-xl sm:text-2xl lg:text-3xl font-extrabold leading-snug cursor-pointer transition-all duration-500 ${
+                              className={`origin-center lg:origin-left text-xl sm:text-2xl lg:text-3xl font-extrabold leading-snug cursor-pointer transition-all duration-500 ${
                                 isActive
                                   ? 'text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.5)] scale-105'
                                   : isPassed
-                                    ? 'text-white/35'
-                                    : 'text-white/15 blur-[1px] hover:blur-none hover:text-white/30'
+                                    ? 'text-white/35 scale-100'
+                                    : 'text-white/15 blur-[1px] hover:blur-none hover:text-white/30 scale-100'
                               }`}
                             >
                               {lyric.text}
