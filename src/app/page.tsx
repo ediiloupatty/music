@@ -29,14 +29,14 @@ export default async function Home({
     : [];
 
   return (
-    <div className="flex h-screen text-slate-100 font-sans bg-[#0d0d12] overflow-hidden relative">
+    <div className="flex h-screen text-slate-100 font-sans bg-[#0d0d12] overflow-hidden relative gap-2">
 
       {/* Background glows */}
       <div className="pointer-events-none absolute top-0 right-0 w-[700px] h-[700px] bg-gradient-to-bl from-rose-900/25 via-purple-900/10 to-transparent rounded-full blur-[130px]" />
       <div className="pointer-events-none absolute bottom-0 left-0 w-[500px] h-[500px] bg-gradient-to-tr from-indigo-900/20 to-transparent rounded-full blur-[100px]" />
 
       {/* ─── SIDEBAR ──────────────────────────────────────────────── */}
-      <aside className="relative z-20 flex flex-col items-center w-[72px] md:w-[88px] py-7 flex-shrink-0 h-full">
+      <aside className="relative z-20 flex flex-col items-center w-[72px] md:w-[88px] py-7 flex-shrink-0 h-full border-r border-white/5 mr-4 md:mr-8">
 
         {/* Avatar / logo */}
         <div className="mb-10 w-11 h-11 rounded-full bg-gradient-to-br from-red-500 to-purple-600 border-2 border-white/10 shadow-[0_0_14px_rgba(239,68,68,0.35)] flex items-center justify-center flex-shrink-0 cursor-pointer relative">
@@ -149,18 +149,22 @@ export default async function Home({
                 <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors">More ›</a>
               </div>
 
-              <div className="flex gap-4 overflow-x-auto pb-2 snap-x hide-scrollbar">
+              <div className="flex gap-5 overflow-x-auto pb-3 snap-x hide-scrollbar -mx-1 px-1">
                 {CATEGORIES.map((cat) => {
                   const isActive = currentCategory === cat.id;
                   return (
                     <Link key={cat.id} href={`/?category=${encodeURIComponent(cat.id)}`}
                       className="snap-start flex-shrink-0">
-                      <div className="flex flex-col w-[185px] group cursor-pointer">
-                        <div className={`w-[185px] h-[185px] rounded-2xl relative overflow-hidden mb-3 shadow-lg transition-transform duration-300 group-hover:-translate-y-1.5 bg-gradient-to-br ${cat.bgGradient} ${isActive ? 'ring-2 ring-white/60' : ''}`}>
-                          <div className="absolute inset-0 bg-black/10" />
-                          <img src={cat.image} alt="" className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-40" />
-                          <div className="absolute bottom-3 right-3 bg-black/30 backdrop-blur-sm px-2 py-0.5 rounded-full text-[11px] font-semibold text-white flex items-center gap-1">
-                            4.5 <span className="text-yellow-300">★</span>
+                      <div className="flex flex-col w-[190px] group cursor-pointer">
+                        {/* Card image area */}
+                        <div className={`w-[190px] h-[190px] rounded-2xl mb-3 shadow-lg overflow-hidden relative bg-gradient-to-br ${cat.bgGradient} transition-transform duration-300 group-hover:-translate-y-2 ${isActive ? 'ring-2 ring-white/60 shadow-[0_0_20px_rgba(255,255,255,0.15)]' : ''}`}>
+                          {/* overlay tint */}
+                          <div className="absolute inset-0 bg-black/10 z-[1]" />
+                          {/* background texture */}
+                          <img src={cat.image} alt="" className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-40 z-0" />
+                          {/* Rating pill — always on top inside the card */}
+                          <div className="absolute bottom-3 right-3 z-[2] bg-black/40 backdrop-blur-sm px-2.5 py-1 rounded-full text-[11px] font-bold text-white flex items-center gap-1">
+                            4.5 <span className="text-yellow-300 text-xs">★</span>
                           </div>
                         </div>
                         <h3 className="font-semibold text-sm text-white truncate">{cat.label}</h3>
