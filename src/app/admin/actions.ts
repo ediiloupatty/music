@@ -4,12 +4,26 @@ import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sd
 import { r2Client, queryD1, initializeD1Tables } from "@/lib/cloudflare";
 import { revalidatePath } from "next/cache";
 import * as mm from "music-metadata";
+import sharp from "sharp";
 import { cleanTitle } from "@/lib/cleanTitle";
 
 // Normalize a text value for duplicate comparison: lowercase, collapse
 // whitespace, drop surrounding spaces. Null/empty all map to "".
 function normalizeForMatch(value: string | null | undefined): string {
   return (value || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+// Cover / profile art is only ever shown small, so we cap it at 800px and
+// re-encode as JPEG. This keeps stored files tiny (faster loads, fewer failures
+// over an unstable connection) while staying visually sharp. Always JPEG.
+const COVER_MAX = 800;
+const COVER_QUALITY = 82;
+async function compressCoverImage(input: Buffer | Uint8Array): Promise<Buffer> {
+  return sharp(input)
+    .rotate() // honour EXIF orientation before stripping metadata
+    .resize(COVER_MAX, COVER_MAX, { fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: COVER_QUALITY })
+    .toBuffer();
 }
 
 export async function uploadTrackAction(formData: FormData) {
@@ -121,14 +135,14 @@ export async function uploadTrackAction(formData: FormData) {
     let coverUrl: string | null = null;
     if (picture) {
       try {
-        const coverExt = picture.format.split('/')[1] || 'jpg';
-        const coverFilename = `cover_${Date.now()}-${Math.random().toString(36).substring(7)}.${coverExt}`;
+        const coverData = await compressCoverImage(picture.data);
+        const coverFilename = `cover_${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
         await r2Client.send(
           new PutObjectCommand({
             Bucket: bucketName,
             Key: coverFilename,
-            Body: picture.data,
-            ContentType: picture.format,
+            Body: coverData,
+            ContentType: "image/jpeg",
           })
         );
         coverUrl = `/api/cover/${coverFilename}`;
@@ -291,16 +305,15 @@ export async function setAlbumCoverAction(formData: FormData): Promise<{ success
     await initializeD1Tables();
 
     const bucketName = process.env.R2_BUCKET_NAME || "zenify";
-    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-    const filename = `album_${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const filename = `album_${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+    const buffer = await compressCoverImage(Buffer.from(await file.arrayBuffer()));
 
     await r2Client.send(
       new PutObjectCommand({
         Bucket: bucketName,
         Key: filename,
         Body: buffer,
-        ContentType: file.type,
+        ContentType: "image/jpeg",
       })
     );
 
@@ -370,16 +383,15 @@ export async function setArtistImageAction(formData: FormData): Promise<{ succes
     await initializeD1Tables();
 
     const bucketName = process.env.R2_BUCKET_NAME || "zenify";
-    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-    const filename = `artist_${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const filename = `artist_${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+    const buffer = await compressCoverImage(Buffer.from(await file.arrayBuffer()));
 
     await r2Client.send(
       new PutObjectCommand({
         Bucket: bucketName,
         Key: filename,
         Body: buffer,
-        ContentType: file.type,
+        ContentType: "image/jpeg",
       })
     );
 
@@ -482,5 +494,60 @@ export async function deleteTrackAction(trackId: string, fileUrl: string) {
   } catch (error: any) {
     console.error("Delete error:", error);
     return { success: false, error: error.message || "An error occurred during deletion" };
+  }
+}
+
+// One-time cleanup: shrink every cover/profile image already in R2. Downloads
+// each object, compresses it with sharp, and overwrites the SAME key — no DB
+// changes, no deletions, audio untouched. Skips images that are already small,
+// so it's safe to run more than once.
+export async function compressAllCoversAction(): Promise<{ success: boolean; updated?: number; failed?: number; skipped?: number; error?: string }> {
+  try {
+    await initializeD1Tables();
+    const bucketName = process.env.R2_BUCKET_NAME || "music";
+
+    const rows = (await queryD1(`
+      SELECT cover_url AS url FROM tracks  WHERE cover_url LIKE '/api/cover/%'
+      UNION
+      SELECT cover_url AS url FROM albums  WHERE cover_url LIKE '/api/cover/%'
+      UNION
+      SELECT image_url AS url FROM artists WHERE image_url LIKE '/api/cover/%'
+    `)) as { url: string }[];
+
+    const keys = Array.from(
+      new Set(rows.map((r) => decodeURIComponent(r.url.replace("/api/cover/", ""))).filter(Boolean))
+    );
+
+    let updated = 0, failed = 0, skipped = 0;
+    for (const key of keys) {
+      try {
+        const obj = await r2Client.send(new GetObjectCommand({ Bucket: bucketName, Key: key }));
+        if (!obj.Body) { failed++; continue; }
+        const original = Buffer.from(await obj.Body.transformToByteArray());
+
+        // Already small enough? leave it (keeps the action idempotent).
+        const meta = await sharp(original).metadata();
+        const oversized = (meta.width || 0) > COVER_MAX || (meta.height || 0) > COVER_MAX;
+        if (!oversized && original.length < 150 * 1024) { skipped++; continue; }
+
+        const compressed = await compressCoverImage(original);
+        if (compressed.length >= original.length && !oversized) { skipped++; continue; }
+
+        await r2Client.send(new PutObjectCommand({
+          Bucket: bucketName, Key: key, Body: compressed, ContentType: "image/jpeg",
+        }));
+        updated++;
+      } catch (e) {
+        console.warn("Failed to compress cover:", key, e);
+        failed++;
+      }
+    }
+
+    revalidatePath("/");
+    revalidatePath("/admin");
+    return { success: true, updated, failed, skipped };
+  } catch (error: any) {
+    console.error("Compress covers error:", error);
+    return { success: false, error: error.message || "Failed to compress covers" };
   }
 }

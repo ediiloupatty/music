@@ -3,6 +3,10 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2Client } from "@/lib/cloudflare";
 
+// Redirect to a signed R2 URL so the BROWSER fetches each cover directly from
+// R2 (the *.r2.cloudflarestorage.com endpoint, which the ISP doesn't block).
+// This loads many covers in parallel and reliably — unlike proxying every byte
+// through this single server, which failed under load on an unstable network.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ filename: string }> }

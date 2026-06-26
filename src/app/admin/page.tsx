@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import { uploadTrackAction, deleteTrackAction, updateTrackAction, recleanAllTitlesAction, backfillAudioSpecsAction } from "./actions";
+import { uploadTrackAction, deleteTrackAction, updateTrackAction, recleanAllTitlesAction, backfillAudioSpecsAction, compressAllCoversAction } from "./actions";
 import { cleanTitle } from "@/lib/cleanTitle";
 import AlbumManager from "@/components/AlbumManager";
 import ArtistManager from "@/components/ArtistManager";
@@ -27,6 +27,18 @@ const ICON_PATHS = [
   "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z",
 ];
 
+type TabId = "upload" | "tracks" | "albums" | "artists";
+const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: "upload",  label: "Upload",  icon: "M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" },
+  { id: "tracks",  label: "Tracks",  icon: "M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" },
+  { id: "albums",  label: "Albums",  icon: "M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" },
+  { id: "artists", label: "Artists", icon: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" },
+];
+
+// Track Library renders one page at a time so a 400+ track library stays fast
+// (DOM nodes + cover image requests are limited to a single page).
+const PAGE_SIZE = 50;
+
 function TrackMini({ title, category, coverUrl }: { title: string; category: string; coverUrl?: string }) {
   const [err, setErr] = useState(false);
   if (coverUrl && !err) {
@@ -34,6 +46,8 @@ function TrackMini({ title, category, coverUrl }: { title: string; category: str
       <img
         src={coverUrl}
         alt=""
+        loading="lazy"
+        decoding="async"
         onError={() => setErr(true)}
         className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
       />
@@ -75,7 +89,12 @@ export default function AdminPage() {
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [recleaning, setRecleaning]         = useState(false);
   const [fetchingSpecs, setFetchingSpecs]   = useState(false);
+  const [compressingCovers, setCompressingCovers] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement>(null);
+
+  // Active tab — each major section is its own view instead of one long page.
+  const [tab, setTab] = useState<TabId>("upload");
+  const [page, setPage] = useState(1);
 
   const { data, error, mutate } = useSWR("/api/tracks", fetcher, { revalidateOnFocus: false });
   const { data: playlistData }  = useSWR("/api/playlists", fetcher, { revalidateOnFocus: false });
@@ -96,6 +115,9 @@ export default function AdminPage() {
       })
     : tracks;
 
+  const pageCount = Math.max(1, Math.ceil(filteredTracks.length / PAGE_SIZE));
+  const visibleTracks = filteredTracks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   // ── Preview audio ──────────────────────────────────────────────────────
   useEffect(() => {
     const audio = previewAudioRef.current;
@@ -113,6 +135,11 @@ export default function AdminPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewingId]);
+
+  // Reset to the first page whenever the search query changes.
+  useEffect(() => { setPage(1); }, [searchQuery]);
+  // Keep the page within range as the list shrinks (e.g. after deletes).
+  useEffect(() => { if (page > pageCount) setPage(pageCount); }, [page, pageCount]);
 
   function togglePreview(trackId: string) {
     if (previewingId === trackId) {
@@ -194,6 +221,23 @@ export default function AdminPage() {
       });
     } else {
       setMessage({ type: "error", text: res.error || "Failed to fetch audio specs" });
+    }
+    setTimeout(() => setMessage(null), 4000);
+  }
+
+  // ── Compress all existing covers (one-time cleanup) ───────────────────
+  async function handleCompressCovers() {
+    setCompressingCovers(true);
+    const res = await compressAllCoversAction();
+    setCompressingCovers(false);
+    if (res.success) {
+      mutate();
+      setMessage({
+        type: "success",
+        text: res.updated ? `Compressed ${res.updated} cover${res.updated > 1 ? "s" : ""}.` : "All covers already optimized.",
+      });
+    } else {
+      setMessage({ type: "error", text: res.error || "Failed to compress covers" });
     }
     setTimeout(() => setMessage(null), 4000);
   }
@@ -362,10 +406,29 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-8 pb-24">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* ── TAB BAR ──────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-1 p-1.5 mb-8 rounded-2xl w-full md:w-fit overflow-x-auto scrollbar-thin"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+          {TABS.map((t) => {
+            const active = tab === t.id;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className="flex items-center gap-2 px-4 md:px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all active:scale-95"
+                style={{
+                  background: active ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "transparent",
+                  color: active ? "white" : "rgba(148,163,184,0.7)",
+                  boxShadow: active ? "0 6px 18px rgba(99,102,241,0.35)" : "none",
+                }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d={t.icon} /></svg>
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
 
-          {/* ══ UPLOAD PANEL ═════════════════════════════════════════════ */}
-          <div className="lg:col-span-5 rounded-3xl overflow-hidden relative"
+        {/* ══ UPLOAD TAB ═══════════════════════════════════════════════ */}
+        {tab === "upload" && (
+          <div className="max-w-2xl mx-auto rounded-3xl overflow-hidden relative"
             style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)", backdropFilter: "blur(24px)" }}>
             <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #6366f1, #14b8a6, #f43f5e)" }} />
             <div className="p-6 md:p-8">
@@ -574,10 +637,25 @@ export default function AdminPage() {
               </form>
             </div>
           </div>
+        )}
 
-          {/* ══ TRACK LIBRARY ══════════════════════════════════════════════ */}
-          <div className="lg:col-span-7 relative">
+        {/* ══ TRACKS TAB ═══════════════════════════════════════════════ */}
+        {tab === "tracks" && (
+          <div className="relative">
             <div className="p-1 md:p-2">
+              {message && (
+                <div className={`mb-5 p-3.5 rounded-2xl flex items-start gap-3 text-sm font-medium ${
+                  message.type === "success"
+                    ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300"
+                    : "bg-red-500/10 border border-red-500/20 text-red-300"
+                }`}>
+                  {message.type === "success"
+                    ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="mt-0.5 flex-shrink-0"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+                    : <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="mt-0.5 flex-shrink-0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                  }
+                  <span>{message.text}</span>
+                </div>
+              )}
               {/* Header + Search */}
               <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
                 <div className="flex items-center gap-3">
@@ -639,6 +717,27 @@ export default function AdminPage() {
                   <span className="hidden sm:inline">{fetchingSpecs ? "Fetching..." : "Fetch audio specs"}</span>
                 </button>
 
+                {/* Compress all covers */}
+                <button
+                  onClick={handleCompressCovers}
+                  disabled={compressingCovers || tracks.length === 0}
+                  title="Shrink every stored cover image (resize + JPEG compress) so they load faster. Safe to run repeatedly."
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 disabled:opacity-40"
+                  style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.25)", color: "#a5b4fc" }}
+                >
+                  {compressingCovers ? (
+                    <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19 13H5v-2h14v2zm-4-9H9v2h6V4zM9 20h6v-2H9v2zM7 9l-4 3 4 3V9zm10 6l4-3-4-3v6z" />
+                    </svg>
+                  )}
+                  <span className="hidden sm:inline">{compressingCovers ? "Compressing..." : "Compress covers"}</span>
+                </button>
+
                 {/* Search */}
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1 min-w-[160px] max-w-[240px]"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -692,7 +791,7 @@ export default function AdminPage() {
                     </svg>
                   </div>
                   <h3 className="font-black text-white mb-1">Library is empty</h3>
-                  <p className="text-sm" style={{ color: "rgba(148,163,184,0.5)" }}>Upload your first track using the panel on the left.</p>
+                  <p className="text-sm" style={{ color: "rgba(148,163,184,0.5)" }}>Upload your first track from the <span className="text-white font-semibold">Upload</span> tab.</p>
                 </div>
               )}
 
@@ -703,8 +802,9 @@ export default function AdminPage() {
               )}
 
               {filteredTracks.length > 0 && (
+                <>
                 <div className="flex flex-col gap-0 overflow-y-auto scrollbar-thin" style={{ maxHeight: "clamp(320px, calc(100vh - 300px), 78vh)", paddingRight: "8px" }}>
-                  {filteredTracks.map((track: any, idx: number) => {
+                  {visibleTracks.map((track: any, idx: number) => {
                     const isConfirming = confirmingDeleteId === track.id;
                     const isEditing    = editingId === track.id;
                     const isSaving     = savingId === track.id;
@@ -712,7 +812,7 @@ export default function AdminPage() {
 
                     return (
                       <div key={track.id}
-                        className={`group transition-all overflow-hidden ${
+                        className={`group transition-all overflow-hidden flex-shrink-0 ${
                           isEditing || isConfirming || isPreviewing ? "rounded-2xl my-1" : "rounded-lg"
                         }`}
                         style={{
@@ -763,7 +863,7 @@ export default function AdminPage() {
                               </svg>
                             ) : (
                               <span className="text-[11px] font-mono group-hover:hidden">
-                                {String(idx + 1).padStart(2, "0")}
+                                {String((page - 1) * PAGE_SIZE + idx + 1).padStart(2, "0")}
                               </span>
                             )}
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"
@@ -918,17 +1018,38 @@ export default function AdminPage() {
                     );
                   })}
                 </div>
+
+                {pageCount > 1 && (
+                  <div className="flex items-center justify-between gap-3 mt-4 flex-wrap">
+                    <span className="text-xs" style={{ color: "rgba(148,163,184,0.5)" }}>
+                      Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredTracks.length)} of {filteredTracks.length}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+                        className="px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-30"
+                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(148,163,184,0.9)" }}>
+                        ‹ Prev
+                      </button>
+                      <span className="px-3 py-2 text-xs font-bold" style={{ color: "white" }}>{page} / {pageCount}</span>
+                      <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount}
+                        className="px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-30"
+                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(148,163,184,0.9)" }}>
+                        Next ›
+                      </button>
+                    </div>
+                  </div>
+                )}
+                </>
               )}
             </div>
           </div>
+        )}
 
-        </div>
+        {/* ══ ALBUMS TAB ═══════════════════════════════════════════════ */}
+        {tab === "albums" && <AlbumManager />}
 
-        {/* Album cover manager */}
-        <AlbumManager />
-
-        {/* Artist profile manager */}
-        <ArtistManager />
+        {/* ══ ARTISTS TAB ══════════════════════════════════════════════ */}
+        {tab === "artists" && <ArtistManager />}
       </main>
     </div>
   );

@@ -18,7 +18,9 @@ export const r2Client = new S3Client({
 
 // --- Cloudflare D1 Helper (REST API) ---
 // Requires: CLOUDFLARE_ACCOUNT_ID, D1_DATABASE_ID, CLOUDFLARE_API_TOKEN
-export async function queryD1(sql: string, params: any[] = []) {
+// `silent` suppresses the error log for queries that are EXPECTED to fail
+// (e.g. ALTER TABLE ADD COLUMN on a column that already exists).
+export async function queryD1(sql: string, params: any[] = [], opts: { silent?: boolean } = {}) {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const dbId = process.env.D1_DATABASE_ID;
   const apiToken = process.env.CLOUDFLARE_API_TOKEN;
@@ -27,6 +29,9 @@ export async function queryD1(sql: string, params: any[] = []) {
     throw new Error("Missing Cloudflare D1 environment variables");
   }
 
+  // Single attempt with a hard timeout. Retrying was a mistake here: when the
+  // connection to Cloudflare is down, each attempt blocks for ~10s, so retries
+  // stacked up to 30-50s before failing. Failing fast keeps the app responsive.
   const response = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${dbId}/query`,
     {
@@ -35,24 +40,37 @@ export async function queryD1(sql: string, params: any[] = []) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiToken}`,
       },
-      body: JSON.stringify({
-        sql,
-        params,
-      }),
+      body: JSON.stringify({ sql, params }),
+      signal: AbortSignal.timeout(20000),
     }
   );
 
   const data = await response.json();
   if (!data.success) {
-    console.error("D1 Query Error:", data.errors);
+    if (!opts.silent) console.error("D1 Query Error:", data.errors);
     throw new Error("Failed to execute D1 query");
   }
 
   return data.result[0].results;
 }
 
-// Helper to initialize tables if they don't exist
-export async function initializeD1Tables() {
+// Run the schema setup at most once per server process. Every D1 round-trip is
+// slow + flaky over the network, and re-running ~17 DDL statements on every API
+// request was both spamming "duplicate column" logs and adding seconds of
+// latency (raising the chance of a connect timeout that blanks the page).
+// The promise is cached on success; on failure it's cleared so a later request
+// can retry.
+let initPromise: Promise<void> | null = null;
+export function initializeD1Tables(): Promise<void> {
+  if (initPromise) return initPromise;
+  initPromise = runInitializeD1Tables().then(
+    () => { console.log("Tables initialized successfully."); },
+    (error) => { initPromise = null; console.error("Error initializing tables:", error); }
+  );
+  return initPromise;
+}
+
+async function runInitializeD1Tables() {
   const tracksTable = `
     CREATE TABLE IF NOT EXISTS tracks (
       id TEXT PRIMARY KEY,
@@ -108,30 +126,22 @@ export async function initializeD1Tables() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `;
-  try {
-    await queryD1(tracksTable);
-    await queryD1(favoritesTable);
-    await queryD1(usersTable);
-    await queryD1(playlistsTable);
-    await queryD1(albumsTable);
-    await queryD1(artistsTable);
+  await queryD1(tracksTable);
+  await queryD1(favoritesTable);
+  await queryD1(usersTable);
+  await queryD1(playlistsTable);
+  await queryD1(albumsTable);
+  await queryD1(artistsTable);
 
-    // Attempt to add new columns if they don't exist (SQLite doesn't support IF NOT EXISTS for ADD COLUMN natively via single statement, so we just catch errors if they already exist)
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN artist TEXT;`); } catch(e) {}
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN cover_url TEXT;`); } catch(e) {}
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN lyrics TEXT;`); } catch(e) {}
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN album TEXT;`); } catch(e) {}
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN year INTEGER;`); } catch(e) {}
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN genre TEXT;`); } catch(e) {}
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN duration REAL;`); } catch(e) {}
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN bit_depth INTEGER;`); } catch(e) {}
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN sample_rate INTEGER;`); } catch(e) {}
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN play_count INTEGER DEFAULT 0;`); } catch(e) {}
-    try { await queryD1(`ALTER TABLE tracks ADD COLUMN last_played_at DATETIME;`); } catch(e) {}
-
-    console.log("Tables initialized successfully.");
-  } catch (error) {
-    console.error("Error initializing tables:", error);
+  // SQLite has no "ADD COLUMN IF NOT EXISTS", so attempt each and ignore the
+  // expected "duplicate column" failure (silenced so it doesn't spam the log).
+  const newColumns = [
+    "artist TEXT", "cover_url TEXT", "lyrics TEXT", "album TEXT", "year INTEGER",
+    "genre TEXT", "duration REAL", "bit_depth INTEGER", "sample_rate INTEGER",
+    "play_count INTEGER DEFAULT 0", "last_played_at DATETIME",
+  ];
+  for (const col of newColumns) {
+    try { await queryD1(`ALTER TABLE tracks ADD COLUMN ${col};`, [], { silent: true }); } catch { /* already exists */ }
   }
 }
 

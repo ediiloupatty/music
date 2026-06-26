@@ -4,6 +4,10 @@ import bcrypt from "bcryptjs";
 import { queryD1 } from "./lib/cloudflare";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Trust the incoming host header. Required because the app is accessed via
+  // localhost AND the LAN IP (e.g. 192.168.x.x) in dev / self-hosted setups;
+  // without this Auth.js rejects them with an UntrustedHost error.
+  trustHost: true,
   providers: [
     CredentialsProvider({
       name: "Login",
