@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
 import NeuronVisualizer from "./NeuronVisualizer";
 import { cleanTitle } from "@/lib/cleanTitle";
+import { formatAudioSpecs } from "@/lib/formatSpecs";
 import { saveDurationAction } from "@/app/admin/actions";
 
 type ParsedLyric = { time: number; text: string };
@@ -397,6 +399,8 @@ export default function BottomPlayer() {
 
   // Backfill duration into D1 for legacy tracks uploaded before it was extracted
   const backfilledRef = useRef<Set<string>>(new Set());
+  // Count one play per track load (fires on each new src / track change)
+  const playCountedRef = useRef<string | null>(null);
   const handleLoadedMetadata = () => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
@@ -404,6 +408,14 @@ export default function BottomPlayer() {
     if (Number.isFinite(d) && d > 0 && !currentTrack.duration && !backfilledRef.current.has(currentTrack.id)) {
       backfilledRef.current.add(currentTrack.id);
       saveDurationAction(currentTrack.id, d).catch(() => {});
+    }
+    if (playCountedRef.current !== currentTrack.id) {
+      playCountedRef.current = currentTrack.id;
+      fetch("/api/play", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackId: currentTrack.id }),
+      }).catch(() => {});
     }
   };
 
@@ -565,7 +577,14 @@ export default function BottomPlayer() {
             </button>
 
             {/* Now Playing label */}
-            <div className="flex flex-col items-center">
+            <div className="flex items-center gap-2">
+              {isPlaying && (
+                <span className="flex items-end gap-[2px] h-3.5">
+                  <span className="eq-bar" />
+                  <span className="eq-bar" />
+                  <span className="eq-bar" />
+                </span>
+              )}
               <span className="text-[10px] font-black tracking-[0.35em] text-teal-400 uppercase">Now Playing</span>
             </div>
 
@@ -602,48 +621,64 @@ export default function BottomPlayer() {
             {/* â”€â”€ PLAYER PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div className={`flex flex-col items-center lg:flex-1 lg:flex lg:flex-col lg:items-center lg:justify-center px-6 pb-6 overflow-y-auto ${hasLyrics && activeTab === "lyrics" ? "hidden lg:flex" : "flex"}`}>
 
-              {/* Cover Art */}
+              {/* Cover Art — breathes with playback (Apple Music style) */}
               <div
-                className="w-56 h-56 sm:w-64 sm:h-64 lg:w-72 lg:h-72 rounded-3xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex-shrink-0 mt-2 mb-6"
-                style={{ boxShadow: `0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(0,0,0,0.3)` }}
+                className="w-56 h-56 sm:w-64 sm:h-64 lg:w-72 lg:h-72 rounded-[28px] overflow-hidden flex-shrink-0 mt-4 mb-7 transition-transform duration-700 ease-out will-change-transform"
+                style={{
+                  transform: isPlaying ? "scale(1)" : "scale(0.86)",
+                  boxShadow: isPlaying
+                    ? "0 30px 80px rgba(0,0,0,0.55), 0 0 70px var(--accent-glow)"
+                    : "0 16px 44px rgba(0,0,0,0.45)",
+                }}
               >
                 <LargeCoverArt title={currentTrack.title} category={currentTrack.category} coverUrl={currentTrack.cover_url} size="lg" />
               </div>
 
               {/* Track Meta */}
               <div className="w-full text-center mb-5 px-2">
-                {/* Category chip */}
-                <div className="flex items-center justify-center gap-2 mb-2">
+                {/* Category + Hi-Res chip */}
+                <div className="flex items-center justify-center gap-2 mb-2.5">
                   <span className="text-[10px] font-bold tracking-[0.3em] text-slate-500 uppercase">
                     {currentTrack.category}
                   </span>
-                  {currentTrack.file_url && (currentTrack.file_url.endsWith('.flac') || currentTrack.file_url.endsWith('.wav')) && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-widest border border-white/20 shadow-[0_0_12px_rgba(45,212,191,0.4)]">
-                      HI-RES
+                  {formatAudioSpecs(currentTrack) && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-widest border border-white/20 shadow-[0_0_12px_rgba(45,212,191,0.4)]">
+                      {formatAudioSpecs(currentTrack)}
                     </span>
                   )}
                 </div>
 
                 {/* Title */}
-                <h2 className="font-black text-2xl sm:text-3xl text-white leading-tight mb-1.5 drop-shadow-lg px-4">
+                <h2 className="font-black text-2xl sm:text-[1.75rem] text-white leading-tight tracking-tight mb-1.5 drop-shadow-lg px-4">
                   {cleanTitle(currentTrack.title)}
                 </h2>
 
                 {/* Artist */}
-                <p className="text-base text-teal-400 font-semibold drop-shadow-md">
-                  {currentTrack.artist || currentTrack.category}
-                </p>
+                {currentTrack.artist ? (
+                  <Link
+                    href={`/artist/${encodeURIComponent(currentTrack.artist)}`}
+                    onClick={() => setIsExpanded(false)}
+                    className="text-base font-semibold drop-shadow-md hover:underline inline-block"
+                    style={{ color: "var(--accent-light)" }}
+                  >
+                    {currentTrack.artist}
+                  </Link>
+                ) : (
+                  <p className="text-base font-semibold drop-shadow-md" style={{ color: "var(--accent-light)" }}>
+                    {currentTrack.category}
+                  </p>
+                )}
 
                 {/* Album / Year / Genre */}
                 {(currentTrack.album || currentTrack.year || currentTrack.genre) && (
-                  <div className="flex items-center justify-center flex-wrap gap-x-2 gap-y-1 mt-2.5">
+                  <div className="flex items-center justify-center flex-wrap gap-x-2.5 gap-y-1 mt-3">
                     {currentTrack.album && (
                       <span className="text-xs text-slate-400 font-medium truncate max-w-[180px]">
                         {currentTrack.album}
                       </span>
                     )}
                     {currentTrack.album && (currentTrack.year || currentTrack.genre) && (
-                      <span className="text-slate-600 text-xs">Â·</span>
+                      <span className="w-[3px] h-[3px] rounded-full bg-slate-600 inline-block" />
                     )}
                     {currentTrack.year && (
                       <span className="text-xs text-slate-500 font-medium tabular-nums">
@@ -651,7 +686,7 @@ export default function BottomPlayer() {
                       </span>
                     )}
                     {currentTrack.year && currentTrack.genre && (
-                      <span className="text-slate-600 text-xs">Â·</span>
+                      <span className="w-[3px] h-[3px] rounded-full bg-slate-600 inline-block" />
                     )}
                     {currentTrack.genre && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase"
@@ -686,9 +721,9 @@ export default function BottomPlayer() {
                   />
                 </div>
                 {/* Times */}
-                <div className="flex justify-between text-xs font-mono text-slate-400">
-                  <span>{formatTime(progress)}</span>
-                  <span>{formatTime(duration)}</span>
+                <div className="flex justify-between text-xs font-mono tabular-nums">
+                  <span className="text-slate-200">{formatTime(progress)}</span>
+                  <span className="text-slate-500">{formatTime(duration)}</span>
                 </div>
               </div>
 
@@ -924,11 +959,22 @@ export default function BottomPlayer() {
             <div className="flex flex-col overflow-hidden flex-1 min-w-0">
               <div className="font-bold text-sm truncate flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
                 <span className="truncate">{cleanTitle(currentTrack.title)}</span>
-                {currentTrack.file_url && (currentTrack.file_url.endsWith('.flac') || currentTrack.file_url.endsWith('.wav')) && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-wider border border-white/20 shadow-[0_0_10px_rgba(45,212,191,0.3)] flex-shrink-0">HI-RES</span>
+                {formatAudioSpecs(currentTrack) && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-wider border border-white/20 shadow-[0_0_10px_rgba(45,212,191,0.3)] flex-shrink-0">{formatAudioSpecs(currentTrack)}</span>
                 )}
               </div>
-              <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{currentTrack.artist || currentTrack.category}</div>
+              {currentTrack.artist ? (
+                <Link
+                  href={`/artist/${encodeURIComponent(currentTrack.artist)}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs truncate hover:underline w-fit max-w-full"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  {currentTrack.artist}
+                </Link>
+              ) : (
+                <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{currentTrack.category}</div>
+              )}
             </div>
             <div className="ml-auto md:hidden">
               <button onClick={(e) => { e.stopPropagation(); setIsExpanded(true); }} style={{ color: "var(--text-muted)" }}>

@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import FavoriteButton from "./FavoriteButton";
 import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
 import { cleanTitle } from "@/lib/cleanTitle";
+import { formatAudioSpecs } from "@/lib/formatSpecs";
 import { moveTrackToPlaylistAction } from "@/app/actions/tracks";
 
 // Generate a consistent index from a string
@@ -94,11 +96,13 @@ export default function MainTracksContainer({
   currentCategory,
   userFavorites,
   isLoggedIn,
+  columns = false,
 }: {
   initialTracks: Track[];
   currentCategory: string | null;
   userFavorites: string[];
   isLoggedIn: boolean;
+  columns?: boolean;
 }) {
   const url = currentCategory ? `/api/tracks?category=${encodeURIComponent(currentCategory)}` : null;
   const { playTrack, tracks: playerTracks, currentTrackIndex, isPlaying } = usePlayer();
@@ -164,6 +168,21 @@ export default function MainTracksContainer({
           <p className="text-slate-400">No tracks found. Upload some via the Admin panel.</p>
         ) : (
           <div className="flex flex-col gap-2">
+            {/* Column header (desktop) — only in table/columns mode */}
+            {columns && (
+              <div
+                className="hidden md:flex items-center gap-4 px-3 pb-2 mb-1 border-b text-[10px] font-bold tracking-wider uppercase"
+                style={{ color: "var(--text-muted)", borderColor: "var(--border-subtle)" }}
+              >
+                <span className="w-5 text-center flex-shrink-0">#</span>
+                <span className="w-11 flex-shrink-0" />
+                <span className="flex-1 min-w-0">Title</span>
+                <span className="w-36 lg:w-44 flex-shrink-0">Artist</span>
+                <span className="hidden lg:block w-36 lg:w-44 flex-shrink-0">Album</span>
+                <span className="w-12 text-right flex-shrink-0">Time</span>
+                <span className="flex-shrink-0" style={{ width: isLoggedIn ? "4rem" : "1.75rem" }} />
+              </div>
+            )}
             {displayTracks.map((track, idx) => {
               const isFavorited = userFavorites.includes(track.id);
               const isCurrent = !!currentPlayingId && track.id === currentPlayingId;
@@ -211,32 +230,78 @@ export default function MainTracksContainer({
                     <TrackCoverArt title={track.title} category={track.category} coverUrl={track.cover_url} />
                   </div>
 
-                  {/* Title + Artist */}
+                  {/* Title column */}
                   <div className="flex flex-col overflow-hidden flex-1 min-w-0">
                     <span
                       className="font-semibold text-sm truncate transition-colors"
                       style={{ color: isCurrent ? "var(--accent)" : "var(--text-primary)" }}
                     >
                       {cleanTitle(track.title)}
-                      {track.file_url && (track.file_url.endsWith(".flac") || track.file_url.endsWith(".wav")) && (
+                      {formatAudioSpecs(track) && (
                         <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-wider border border-white/20 align-middle">
-                          HI-RES
+                          {formatAudioSpecs(track)}
                         </span>
                       )}
                     </span>
-                    <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
-                      {track.artist || track.category}
+                    {/* Stacked artist: always in list mode; mobile-only in columns mode */}
+                    <span className={columns ? "md:hidden" : "block"}>
+                      {track.artist ? (
+                        <Link
+                          href={`/artist/${encodeURIComponent(track.artist)}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs truncate hover:underline w-fit max-w-full transition-colors"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {track.artist}
+                        </Link>
+                      ) : (
+                        <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+                          {track.category}
+                        </span>
+                      )}
                     </span>
                   </div>
 
-                  {/* Right side: duration + actions */}
+                  {/* Artist / Album / Time columns — table mode only */}
+                  {columns && (
+                    <>
+                      <div className="hidden md:block w-36 lg:w-44 flex-shrink-0 min-w-0">
+                        {track.artist ? (
+                          <Link
+                            href={`/artist/${encodeURIComponent(track.artist)}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs truncate block hover:underline transition-colors"
+                            style={{ color: "var(--text-muted)" }}
+                          >
+                            {track.artist}
+                          </Link>
+                        ) : (
+                          <span className="text-xs truncate block" style={{ color: "var(--text-muted)" }}>
+                            {track.category}
+                          </span>
+                        )}
+                      </div>
+                      <div className="hidden lg:block w-36 lg:w-44 flex-shrink-0 min-w-0">
+                        <span className="text-xs truncate block" style={{ color: "var(--text-muted)" }}>
+                          {track.album || "—"}
+                        </span>
+                      </div>
+                      <span
+                        className="hidden sm:block w-12 text-right text-xs font-mono tabular-nums flex-shrink-0"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        {dur || "--:--"}
+                      </span>
+                    </>
+                  )}
+
+                  {/* Actions */}
                   <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {dur && (
+                    {!columns && dur && (
                       <span className="text-xs font-mono tabular-nums hidden sm:block" style={{ color: "var(--text-muted)" }}>
                         {dur}
                       </span>
                     )}
-
                     <FavoriteButton trackId={track.id} initialIsFavorited={isFavorited} isLoggedIn={isLoggedIn} />
 
                     {/* ⋯ menu */}

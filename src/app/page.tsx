@@ -1,7 +1,7 @@
 import Link from "next/link";
-import MainTracksContainer from "@/components/MainTracksContainer";
 import PlaylistSection from "@/components/PlaylistSection";
-import { getTracksByCategory, getUserFavorites, Track } from "@/lib/cloudflare";
+import HomeContent from "@/components/HomeContent";
+import { getTracksByCategory, getTracksByAlbum, getRecentlyPlayed, getNewTracks, getUserFavorites, Track } from "@/lib/cloudflare";
 import { auth, signOut } from "@/auth";
 import DynamicBackground from "@/components/DynamicBackground";
 
@@ -12,9 +12,18 @@ export default async function Home({
 }) {
   const resolvedParams = await searchParams;
   const currentCategory = (resolvedParams?.category as string) || null;
+  const currentAlbum = (resolvedParams?.album as string) || null;
 
-  // Fetch all tracks OR filtered by category
-  const tracks: Track[] = await getTracksByCategory(currentCategory);
+  // Fetch tracks: by album if browsing an album, else by category (or all)
+  const tracks: Track[] = currentAlbum
+    ? await getTracksByAlbum(currentAlbum)
+    : await getTracksByCategory(currentCategory);
+
+  // Curated feed for the default home view
+  const [recentlyPlayed, newTracks] = await Promise.all([
+    getRecentlyPlayed(9),
+    getNewTracks(12),
+  ]);
   const session = await auth();
   const isLoggedIn = !!session?.user;
   const userFavorites = isLoggedIn && session.user?.email
@@ -187,25 +196,8 @@ export default async function Home({
             <button className="transition-colors text-lg leading-none" style={{ color: "var(--text-muted)" }}>›</button>
           </div>
 
-          {/* Search */}
-          <div
-            className="flex-1 max-w-[420px] flex items-center gap-2 rounded-full px-4 py-2.5 transition-all"
-            style={{
-              background: "var(--bg-card)",
-              border: "1px solid var(--border-subtle)",
-              backdropFilter: "blur(12px)",
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--text-muted)", flexShrink: 0 }}>
-              <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search songs, artists..."
-              className="bg-transparent border-none outline-none text-sm w-full"
-              style={{ color: "var(--text-primary)" }}
-            />
-          </div>
+          {/* Search — placeholder, actual AI search is in HomeContent */}
+          <div className="flex-1 max-w-[480px]" id="search-header-slot" />
 
           {/* Theme toggle + notification */}
           <div className="flex items-center gap-2">
@@ -230,18 +222,16 @@ export default async function Home({
 
               <PlaylistSection currentCategory={currentCategory} isLoggedIn={isLoggedIn} />
 
-              {/* Tracks */}
-              <div>
-                <h2 className="text-xl font-black mb-4" style={{ color: "var(--text-primary)" }}>
-                  {currentCategory ? `${currentCategory}` : "All Tracks"}
-                </h2>
-                <MainTracksContainer
-                  initialTracks={tracks}
-                  currentCategory={currentCategory}
-                  userFavorites={userFavorites}
-                  isLoggedIn={isLoggedIn}
-                />
-              </div>
+              {/* AI Search + curated feed / filtered tracks */}
+              <HomeContent
+                tracks={tracks}
+                currentCategory={currentCategory}
+                currentAlbum={currentAlbum}
+                recentlyPlayed={recentlyPlayed}
+                newTracks={newTracks}
+                userFavorites={userFavorites}
+                isLoggedIn={isLoggedIn}
+              />
           </div>
         </div>
       </div>

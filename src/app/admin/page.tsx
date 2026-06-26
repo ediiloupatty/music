@@ -3,8 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import { uploadTrackAction, deleteTrackAction, updateTrackAction, recleanAllTitlesAction } from "./actions";
+import { uploadTrackAction, deleteTrackAction, updateTrackAction, recleanAllTitlesAction, backfillAudioSpecsAction } from "./actions";
 import { cleanTitle } from "@/lib/cleanTitle";
+import AlbumManager from "@/components/AlbumManager";
+import ArtistManager from "@/components/ArtistManager";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -26,11 +28,21 @@ const ICON_PATHS = [
 ];
 
 function TrackMini({ title, category, coverUrl }: { title: string; category: string; coverUrl?: string }) {
-  if (coverUrl) return <img src={coverUrl} alt={title} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />;
+  const [err, setErr] = useState(false);
+  if (coverUrl && !err) {
+    return (
+      <img
+        src={coverUrl}
+        alt=""
+        onError={() => setErr(true)}
+        className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
+      />
+    );
+  }
   const pal = PALETTES[hashString(title + category) % PALETTES.length];
   const icon = ICON_PATHS[hashString(title) % ICON_PATHS.length];
   return (
-    <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
+    <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
       style={{ background: `linear-gradient(135deg, ${pal[0]}, ${pal[1]})` }}>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="white" className="opacity-90"><path d={icon} /></svg>
     </div>
@@ -62,6 +74,7 @@ export default function AdminPage() {
   const [previewingId, setPreviewingId]     = useState<string | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [recleaning, setRecleaning]         = useState(false);
+  const [fetchingSpecs, setFetchingSpecs]   = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement>(null);
 
   const { data, error, mutate } = useSWR("/api/tracks", fetcher, { revalidateOnFocus: false });
@@ -168,6 +181,23 @@ export default function AdminPage() {
     setTimeout(() => setMessage(null), 4000);
   }
 
+  // ── Backfill audio specs (bit depth / sample rate) ────────────────────
+  async function handleFetchSpecs() {
+    setFetchingSpecs(true);
+    const res = await backfillAudioSpecsAction();
+    setFetchingSpecs(false);
+    if (res.success) {
+      mutate();
+      setMessage({
+        type: "success",
+        text: res.updated ? `Fetched specs for ${res.updated} track${res.updated > 1 ? "s" : ""}.` : "All tracks already have specs.",
+      });
+    } else {
+      setMessage({ type: "error", text: res.error || "Failed to fetch audio specs" });
+    }
+    setTimeout(() => setMessage(null), 4000);
+  }
+
   // ── File helpers ──────────────────────────────────────────────────────
   function handleFiles(files: FileList | File[]) {
     const arr = Array.from(files).filter(f => /\.(mp3|flac|wav|m4a)$/i.test(f.name));
@@ -230,7 +260,7 @@ export default function AdminPage() {
     if (!selectedFiles.length || !categoryInput.trim()) return;
     setMessage(null);
     setUploadProgress({ current: 0, total: selectedFiles.length });
-    let ok = 0, fail = 0;
+    let ok = 0, fail = 0, dup = 0;
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
       const rawName = file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ");
@@ -240,16 +270,22 @@ export default function AdminPage() {
       fd.append("file", file);
       setUploadProgress({ current: i + 1, total: selectedFiles.length });
       const res = await uploadTrackAction(fd);
-      res.success ? ok++ : fail++;
+      if (res.success) ok++;
+      else if ((res as any).duplicate) dup++;
+      else fail++;
     }
     setUploadProgress({ current: 0, total: 0 });
     setSelectedFiles([]);
     mutate();
-    setMessage(
-      fail === 0
-        ? { type: "success", text: `${ok} track${ok > 1 ? "s" : ""} uploaded successfully!` }
-        : { type: "error",   text: `Uploaded ${ok}, ${fail} failed.` }
-    );
+    // Build a summary: uploaded / duplicates skipped / failed
+    const parts: string[] = [];
+    if (ok)   parts.push(`${ok} uploaded`);
+    if (dup)  parts.push(`${dup} duplicate${dup > 1 ? "s" : ""} skipped`);
+    if (fail) parts.push(`${fail} failed`);
+    setMessage({
+      type: fail > 0 ? "error" : "success",
+      text: parts.length ? `${parts.join(", ")}.` : "Nothing to upload.",
+    });
     setTimeout(() => setMessage(null), 5000);
   }
 
@@ -540,11 +576,8 @@ export default function AdminPage() {
           </div>
 
           {/* ══ TRACK LIBRARY ══════════════════════════════════════════════ */}
-          <div className="lg:col-span-7 rounded-3xl overflow-hidden relative"
-            style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)", backdropFilter: "blur(24px)" }}>
-            <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #14b8a6, #6366f1)" }} />
-
-            <div className="p-6 md:p-8">
+          <div className="lg:col-span-7 relative">
+            <div className="p-1 md:p-2">
               {/* Header + Search */}
               <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
                 <div className="flex items-center gap-3">
@@ -562,6 +595,8 @@ export default function AdminPage() {
                   </div>
                 </div>
 
+                {/* Action controls group — kept together so spacing stays even */}
+                <div className="flex items-center gap-2.5 flex-wrap justify-end flex-1 min-w-0">
                 {/* Re-clean titles */}
                 <button
                   onClick={handleReclean}
@@ -581,6 +616,27 @@ export default function AdminPage() {
                     </svg>
                   )}
                   <span className="hidden sm:inline">{recleaning ? "Cleaning..." : "Re-clean titles"}</span>
+                </button>
+
+                {/* Fetch audio specs */}
+                <button
+                  onClick={handleFetchSpecs}
+                  disabled={fetchingSpecs || tracks.length === 0}
+                  title="Download each track's header from R2 and store bit depth + sample rate (for the Hi-Res badge)"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 disabled:opacity-40"
+                  style={{ background: "rgba(20,184,166,0.12)", border: "1px solid rgba(20,184,166,0.25)", color: "#5eead4" }}
+                >
+                  {fetchingSpecs ? (
+                    <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 3a9 9 0 109 9h-2a7 7 0 11-7-7V3zm7 0v6h-6l2.29-2.29a5 5 0 00-7.08 0L6.8 5.3a7 7 0 019.9 0L19 3z" />
+                    </svg>
+                  )}
+                  <span className="hidden sm:inline">{fetchingSpecs ? "Fetching..." : "Fetch audio specs"}</span>
                 </button>
 
                 {/* Search */}
@@ -604,6 +660,7 @@ export default function AdminPage() {
                       </svg>
                     </button>
                   )}
+                </div>
                 </div>
               </div>
 
@@ -646,7 +703,7 @@ export default function AdminPage() {
               )}
 
               {filteredTracks.length > 0 && (
-                <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: "580px", paddingRight: "4px" }}>
+                <div className="flex flex-col gap-0 overflow-y-auto scrollbar-thin" style={{ maxHeight: "clamp(320px, calc(100vh - 300px), 78vh)", paddingRight: "8px" }}>
                   {filteredTracks.map((track: any, idx: number) => {
                     const isConfirming = confirmingDeleteId === track.id;
                     const isEditing    = editingId === track.id;
@@ -655,23 +712,28 @@ export default function AdminPage() {
 
                     return (
                       <div key={track.id}
-                        className="group rounded-2xl transition-all overflow-hidden"
+                        className={`group transition-all overflow-hidden ${
+                          isEditing || isConfirming || isPreviewing ? "rounded-2xl my-1" : "rounded-lg"
+                        }`}
                         style={{
                           background: isEditing    ? "rgba(99,102,241,0.08)"
                                     : isConfirming ? "rgba(239,68,68,0.07)"
                                     : isPreviewing ? "rgba(20,184,166,0.07)"
-                                    : "rgba(255,255,255,0.025)",
+                                    : "transparent",
                           border: `1px solid ${
                             isEditing    ? "rgba(99,102,241,0.3)"
                             : isConfirming ? "rgba(239,68,68,0.25)"
                             : isPreviewing ? "rgba(20,184,166,0.3)"
-                            : "rgba(255,255,255,0.05)"
+                            : "transparent"
                           }`,
+                          borderBottom: (isEditing || isConfirming || isPreviewing)
+                            ? undefined
+                            : "1px solid rgba(255,255,255,0.07)",
                         }}
                       >
                         {/* ── Normal / Preview Row ── */}
                         <div
-                          className="flex items-center gap-3 px-4 py-3"
+                          className="flex items-center gap-4 px-3 py-2.5"
                           onMouseEnter={e => {
                             if (!isEditing && !isConfirming && !isPreviewing)
                               (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)";
@@ -714,9 +776,9 @@ export default function AdminPage() {
                           <TrackMini title={track.title} category={track.category} coverUrl={track.cover_url} />
 
                           {/* Info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-sm text-white truncate max-w-[200px]">
+                          <div className="flex-1 min-w-0 py-0.5">
+                            <div className="flex items-center gap-2 leading-tight min-w-0">
+                              <span className="font-bold text-sm text-white truncate min-w-0">
                                 {cleanTitle(track.title)}
                               </span>
                               {track.file_url && (track.file_url.endsWith('.flac') || track.file_url.endsWith('.wav')) && (
@@ -726,28 +788,28 @@ export default function AdminPage() {
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className="text-[11px]" style={{ color: "rgba(148,163,184,0.55)" }}>
+                            <div className="flex items-center gap-1.5 mt-1.5 min-w-0 text-[11px]">
+                              <span className="flex-shrink-0 max-w-[45%] truncate" style={{ color: "rgba(148,163,184,0.55)" }}>
                                 {track.artist || "Unknown Artist"}
                               </span>
                               {track.album && (
                                 <>
-                                  <span style={{ color: "rgba(148,163,184,0.25)" }}>·</span>
-                                  <span className="text-[11px] truncate max-w-[100px]" style={{ color: "rgba(148,163,184,0.4)" }}>
+                                  <span className="flex-shrink-0" style={{ color: "rgba(148,163,184,0.25)" }}>·</span>
+                                  <span className="truncate min-w-0" style={{ color: "rgba(148,163,184,0.4)" }}>
                                     {track.album}
                                   </span>
                                 </>
                               )}
                               {track.year && (
                                 <>
-                                  <span style={{ color: "rgba(148,163,184,0.25)" }}>·</span>
-                                  <span className="text-[11px] tabular-nums" style={{ color: "rgba(148,163,184,0.4)" }}>
+                                  <span className="flex-shrink-0" style={{ color: "rgba(148,163,184,0.25)" }}>·</span>
+                                  <span className="flex-shrink-0 tabular-nums" style={{ color: "rgba(148,163,184,0.4)" }}>
                                     {track.year}
                                   </span>
                                 </>
                               )}
                               {track.genre && (
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide"
+                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide"
                                   style={{ background: "rgba(99,102,241,0.12)", color: "rgba(165,180,252,0.7)" }}>
                                   {track.genre}
                                 </span>
@@ -767,7 +829,7 @@ export default function AdminPage() {
                                 style={{ background: "rgba(255,255,255,0.08)", color: "rgba(148,163,184,0.8)" }}>No</button>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-1.5 flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
                               {/* Edit */}
                               <button onClick={() => startEdit(track)} title="Edit metadata"
                                 className="w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-90"
@@ -861,6 +923,12 @@ export default function AdminPage() {
           </div>
 
         </div>
+
+        {/* Album cover manager */}
+        <AlbumManager />
+
+        {/* Artist profile manager */}
+        <ArtistManager />
       </main>
     </div>
   );
