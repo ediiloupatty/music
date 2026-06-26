@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# large local sample audio (mock-mode source — too big for GitHub)
+/src/eample-song/
+
+# design reference screenshots (not part of the app)
+/refrensi*.png
+/Screenshot*.png

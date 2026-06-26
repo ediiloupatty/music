@@ -1,5 +1,13 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import { unstable_cache } from "next/cache";
+import {
+  USE_MOCK_DATA as USE_MOCK,
+  MOCK_TRACKS, MOCK_ALBUMS, MOCK_ARTISTS, MOCK_PLAYLISTS, MOCK_CATEGORY_COUNTS,
+} from "./mockData";
+
+// In mock mode, skip unstable_cache entirely so regenerated sample data appears
+// immediately (no 30s stale window). In real mode, use the real cache.
+const cacheFn: typeof unstable_cache = USE_MOCK ? (((fn: any) => fn) as any) : unstable_cache;
 
 // --- Cloudflare R2 Client ---
 // Requires: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
@@ -62,6 +70,7 @@ export async function queryD1(sql: string, params: any[] = [], opts: { silent?: 
 // can retry.
 let initPromise: Promise<void> | null = null;
 export function initializeD1Tables(): Promise<void> {
+  if (USE_MOCK) return Promise.resolve();
   if (initPromise) return initPromise;
   initPromise = runInitializeD1Tables().then(
     () => { console.log("Tables initialized successfully."); },
@@ -145,15 +154,36 @@ async function runInitializeD1Tables() {
   }
 }
 
-export async function getPlaylists(): Promise<Playlist[]> {
-  try {
-    const rows = await queryD1("SELECT * FROM playlists ORDER BY created_at ASC");
-    return rows as Playlist[];
-  } catch (error) {
-    console.error("Error fetching playlists:", error);
-    return [];
-  }
-}
+export const getPlaylists = cacheFn(
+  async (): Promise<Playlist[]> => {
+    if (USE_MOCK) return MOCK_PLAYLISTS;
+    try {
+      const rows = await queryD1("SELECT * FROM playlists ORDER BY created_at ASC");
+      return rows as Playlist[];
+    } catch (error) {
+      console.error("Error fetching playlists:", error);
+      return [];
+    }
+  },
+  ["playlists"],
+  { revalidate: 30 }
+);
+
+export const getPlaylistById = cacheFn(
+  async (id: string): Promise<Playlist | null> => {
+    if (USE_MOCK) return MOCK_PLAYLISTS.find((p) => p.id === id) || null;
+    try {
+      const rows = await queryD1("SELECT * FROM playlists WHERE id = ?", [id]);
+      return rows.length > 0 ? (rows[0] as Playlist) : null;
+    } catch (error) {
+      console.error("Error fetching playlist:", error);
+      return null;
+    }
+  },
+  ["playlist-by-id"],
+  { revalidate: 30 }
+);
+
 
 export type Track = {
   id: string;
@@ -207,9 +237,39 @@ const TRACK_SELECT_WITH_COVER = `
   ) ec ON ec.album = t.album
 `;
 
+// ─── Media URL normalization ────────────────────────────────────────────────
+// The public R2 bucket (pub-*.r2.dev) is blocked by some ISPs, so rewrite every
+// media URL to go through our signed-redirect proxy routes (/api/cover, /api/audio)
+// which hit the *.r2.cloudflarestorage.com endpoint instead. Safe + idempotent:
+// already-local ("/...") and unknown external URLs are returned untouched.
+function r2KeyFromUrl(url: string): string | null {
+  if (url.includes(".r2.dev/")) return url.split(".r2.dev/").pop() || null;
+  const pub = (process.env.R2_PUBLIC_URL || "").replace(/\/+$/, "");
+  if (pub && url.startsWith(pub)) return url.slice(pub.length).replace(/^\/+/, "");
+  return null;
+}
+function toProxyUrl(url: string | null | undefined, kind: "audio" | "cover"): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("/")) return url; // already a local / proxied path
+  const rawKey = r2KeyFromUrl(url);
+  if (!rawKey) return url; // external URL we don't manage — leave it
+  let key = rawKey;
+  try { key = decodeURIComponent(rawKey); } catch { /* keep as-is */ }
+  const path = key.split("/").map(encodeURIComponent).join("/");
+  return `/api/${kind}/${path}`;
+}
+function normalizeTrack(t: any): Track {
+  return {
+    ...t,
+    file_url: toProxyUrl(t.file_url, "audio") ?? t.file_url,
+    cover_url: toProxyUrl(t.cover_url, "cover"),
+  };
+}
+
 // Fetch tracks based on category or fetch all if none provided
-export const getTracksByCategory = unstable_cache(
+export const getTracksByCategory = cacheFn(
   async (category: string | null = null): Promise<Track[]> => {
+    if (USE_MOCK) return category ? MOCK_TRACKS.filter((t) => t.category === category) : MOCK_TRACKS;
     try {
       let sql = `${TRACK_SELECT_WITH_COVER} ORDER BY t.created_at DESC`;
       let params: string[] = [];
@@ -220,7 +280,7 @@ export const getTracksByCategory = unstable_cache(
       }
 
       const rows = await queryD1(sql, params);
-      return rows as Track[];
+      return (rows as Track[]).map(normalizeTrack);
     } catch (error) {
       console.error("Error fetching tracks:", error);
       return [];
@@ -231,12 +291,13 @@ export const getTracksByCategory = unstable_cache(
 );
 
 // Fetch all tracks belonging to a single album.
-export const getTracksByAlbum = unstable_cache(
+export const getTracksByAlbum = cacheFn(
   async (album: string): Promise<Track[]> => {
+    if (USE_MOCK) return MOCK_TRACKS.filter((t) => t.album === album);
     try {
       const sql = `${TRACK_SELECT_WITH_COVER} WHERE t.album = ? ORDER BY t.created_at DESC`;
       const rows = await queryD1(sql, [album]);
-      return rows as Track[];
+      return (rows as Track[]).map(normalizeTrack);
     } catch (error) {
       console.error("Error fetching album tracks:", error);
       return [];
@@ -255,12 +316,13 @@ export type Artist = {
 };
 
 // Fetch all tracks by a single artist, most-played first (covers resolved).
-export const getTracksByArtist = unstable_cache(
+export const getTracksByArtist = cacheFn(
   async (artist: string): Promise<Track[]> => {
+    if (USE_MOCK) return MOCK_TRACKS.filter((t) => t.artist === artist);
     try {
       const sql = `${TRACK_SELECT_WITH_COVER} WHERE t.artist = ? ORDER BY COALESCE(t.play_count, 0) DESC, t.created_at ASC`;
       const rows = await queryD1(sql, [artist]);
-      return rows as Track[];
+      return (rows as Track[]).map(normalizeTrack);
     } catch (error) {
       console.error("Error fetching artist tracks:", error);
       return [];
@@ -272,6 +334,7 @@ export const getTracksByArtist = unstable_cache(
 
 // Increment a track's play counter and stamp last-played (best-effort).
 export async function incrementPlayCount(trackId: string): Promise<void> {
+  if (USE_MOCK) return;
   try {
     if (!trackId) return;
     await queryD1(
@@ -284,31 +347,43 @@ export async function incrementPlayCount(trackId: string): Promise<void> {
 }
 
 // Recently played tracks (most recent first). Empty until something is played.
-export async function getRecentlyPlayed(limit = 9): Promise<Track[]> {
-  try {
-    const sql = `${TRACK_SELECT_WITH_COVER} WHERE t.last_played_at IS NOT NULL ORDER BY t.last_played_at DESC LIMIT ${Number(limit)}`;
-    const rows = await queryD1(sql);
-    return rows as Track[];
-  } catch (error) {
-    console.error("Error fetching recently played:", error);
-    return [];
-  }
-}
+export const getRecentlyPlayed = cacheFn(
+  async (limit = 9): Promise<Track[]> => {
+    if (USE_MOCK) return MOCK_TRACKS.slice(0, limit);
+    try {
+      const sql = `${TRACK_SELECT_WITH_COVER} WHERE t.last_played_at IS NOT NULL ORDER BY t.last_played_at DESC LIMIT ${Number(limit)}`;
+      const rows = await queryD1(sql);
+      return (rows as Track[]).map(normalizeTrack);
+    } catch (error) {
+      console.error("Error fetching recently played:", error);
+      return [];
+    }
+  },
+  ["recently-played"],
+  { revalidate: 30 }
+);
 
 // Newest additions to the library (most recent first).
-export async function getNewTracks(limit = 12): Promise<Track[]> {
-  try {
-    const sql = `${TRACK_SELECT_WITH_COVER} ORDER BY t.created_at DESC LIMIT ${Number(limit)}`;
-    const rows = await queryD1(sql);
-    return rows as Track[];
-  } catch (error) {
-    console.error("Error fetching new tracks:", error);
-    return [];
-  }
-}
+export const getNewTracks = cacheFn(
+  async (limit = 12): Promise<Track[]> => {
+    if (USE_MOCK) return MOCK_TRACKS.slice(0, limit);
+    try {
+      const sql = `${TRACK_SELECT_WITH_COVER} ORDER BY t.created_at DESC LIMIT ${Number(limit)}`;
+      const rows = await queryD1(sql);
+      return (rows as Track[]).map(normalizeTrack);
+    } catch (error) {
+      console.error("Error fetching new tracks:", error);
+      return [];
+    }
+  },
+  ["new-tracks"],
+  { revalidate: 30 }
+);
 
 // List every artist (derived from tracks) with counts + profile image/bio.
-export async function getArtists(): Promise<Artist[]> {
+export const getArtists = cacheFn(
+  async (): Promise<Artist[]> => {
+  if (USE_MOCK) return MOCK_ARTISTS;
   try {
     const rows = (await queryD1(`
       SELECT t.artist AS name,
@@ -326,17 +401,21 @@ export async function getArtists(): Promise<Artist[]> {
       name: r.name as string,
       trackCount: Number(r.trackCount) || 0,
       albumCount: Number(r.albumCount) || 0,
-      image_url: r.image_url || undefined,
+      image_url: toProxyUrl(r.image_url, "cover"),
       bio: r.bio || undefined,
     }));
   } catch (error) {
     console.error("Error fetching artists:", error);
     return [];
   }
-}
+  },
+  ["artists"],
+  { revalidate: 30 }
+);
 
 // Single artist's profile + counts (null if the artist has no tracks).
 export async function getArtistInfo(name: string): Promise<Artist | null> {
+  if (USE_MOCK) return MOCK_ARTISTS.find((a) => a.name === name) ?? null;
   try {
     const rows = (await queryD1(`
       SELECT t.artist AS name,
@@ -355,7 +434,7 @@ export async function getArtistInfo(name: string): Promise<Artist | null> {
       name: r.name as string,
       trackCount: Number(r.trackCount) || 0,
       albumCount: Number(r.albumCount) || 0,
-      image_url: r.image_url || undefined,
+      image_url: toProxyUrl(r.image_url, "cover"),
       bio: r.bio || undefined,
     };
   } catch (error) {
@@ -364,8 +443,26 @@ export async function getArtistInfo(name: string): Promise<Artist | null> {
   }
 }
 
+// Track count per category/playlist name (cached — used by the playlists API).
+export const getCategoryCounts = cacheFn(
+  async (): Promise<{ category: string; count: number }[]> => {
+    if (USE_MOCK) return MOCK_CATEGORY_COUNTS;
+    try {
+      const rows = await queryD1("SELECT category, COUNT(*) as count FROM tracks GROUP BY category");
+      return rows as { category: string; count: number }[];
+    } catch (error) {
+      console.error("Error fetching category counts:", error);
+      return [];
+    }
+  },
+  ["category-counts"],
+  { revalidate: 30 }
+);
+
 // List every album (derived from tracks) with its resolved cover + source.
-export async function getAlbums(): Promise<Album[]> {
+export const getAlbums = cacheFn(
+  async (): Promise<Album[]> => {
+  if (USE_MOCK) return MOCK_ALBUMS;
   try {
     const rows = (await queryD1(`
       SELECT t.album AS name,
@@ -398,7 +495,7 @@ export async function getAlbums(): Promise<Album[]> {
         name: r.name as string,
         trackCount: Number(r.trackCount) || 0,
         artist: r.artist || undefined,
-        cover_url: cover,
+        cover_url: toProxyUrl(cover, "cover"),
         source,
       };
     });
@@ -406,9 +503,13 @@ export async function getAlbums(): Promise<Album[]> {
     console.error("Error fetching albums:", error);
     return [];
   }
-}
+  },
+  ["albums"],
+  { revalidate: 30 }
+);
 
 export async function getUserFavorites(email: string): Promise<string[]> {
+  if (USE_MOCK) return [];
   try {
     const rows = await queryD1("SELECT track_id FROM favorites WHERE user_email = ?", [email]);
     return rows.map((r: any) => r.track_id);
@@ -419,6 +520,7 @@ export async function getUserFavorites(email: string): Promise<string[]> {
 }
 
 export async function toggleFavoriteInD1(email: string, trackId: string, isFavorited: boolean) {
+  if (USE_MOCK) return;
   try {
     if (isFavorited) {
       await queryD1("DELETE FROM favorites WHERE user_email = ? AND track_id = ?", [email, trackId]);

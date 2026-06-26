@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
-import NeuronVisualizer from "./NeuronVisualizer";
+import { useCoverColor } from "@/lib/useCoverColor";
 import { cleanTitle } from "@/lib/cleanTitle";
 import { formatAudioSpecs } from "@/lib/formatSpecs";
 import { saveDurationAction } from "@/app/admin/actions";
@@ -131,6 +131,7 @@ export default function BottomPlayer() {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [activeTab, setActiveTab] = useState<"player" | "lyrics">("player");
+  const [liked, setLiked] = useState(false); // local heart toggle in the fullscreen player
   const [lyricsOffset, setLyricsOffset] = useState(0);
   const lyricsOffsetRef = useRef(0);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -138,10 +139,14 @@ export default function BottomPlayer() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null); // output volume, AFTER the analyser
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const currentTrack = tracks && tracks.length > 0 ? (tracks[currentTrackIndex] || tracks[0]) : null;
+
+  // Dominant colour of the current cover — used to tint the fullscreen player.
+  const coverColor = useCoverColor(currentTrack?.cover_url);
 
   const [externalLyrics, setExternalLyrics] = useState<string | null>(null);
   const [isFetchingLyrics, setIsFetchingLyrics] = useState(false);
@@ -365,12 +370,25 @@ export default function BottomPlayer() {
       
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.82;
       analyserRef.current = analyser;
-      
+
+      // Chain: source -> analyser -> gain -> speakers.
+      // The analyser taps the signal BEFORE the volume gain, so the visualizer
+      // reflects the music itself and stays dynamic no matter how loud the user
+      // sets the volume (instead of flat-lining when volume is high).
+      const gain = ctx.createGain();
+      gain.gain.value = volume;
+      gainNodeRef.current = gain;
+
       const source = ctx.createMediaElementSource(audioRef.current);
       sourceRef.current = source;
       source.connect(analyser);
-      analyser.connect(ctx.destination);
+      analyser.connect(gain);
+      gain.connect(ctx.destination);
+
+      // The element now runs at full level; the gain node controls loudness.
+      audioRef.current.volume = 1;
     }
     
     if (audioContextRef.current?.state === "suspended") {
@@ -390,10 +408,26 @@ export default function BottomPlayer() {
     setIsPlaying(!isPlaying);
   };
 
+  // Throttled persistence of the playback position so a reload / page change can
+  // resume from where the user left off (keeps every view in sync).
+  const lastPosSaveRef = useRef(0);
+  const restoredPosRef = useRef(false);
+
   const handleTimeUpdate = () => {
     if (audioRef.current) {
       setProgress(audioRef.current.currentTime);
       setDuration(audioRef.current.duration || 0);
+
+      const now = Date.now();
+      if (currentTrack && now - lastPosSaveRef.current > 2000) {
+        lastPosSaveRef.current = now;
+        try {
+          localStorage.setItem(
+            "zenify_player_pos",
+            JSON.stringify({ id: currentTrack.id, t: audioRef.current.currentTime })
+          );
+        } catch {}
+      }
     }
   };
 
@@ -408,6 +442,21 @@ export default function BottomPlayer() {
     if (Number.isFinite(d) && d > 0 && !currentTrack.duration && !backfilledRef.current.has(currentTrack.id)) {
       backfilledRef.current.add(currentTrack.id);
       saveDurationAction(currentTrack.id, d).catch(() => {});
+    }
+
+    // Restore the saved playback position once, for the track that was loaded on
+    // page load (so a reload/navigation resumes from where it left off).
+    if (!restoredPosRef.current) {
+      restoredPosRef.current = true;
+      try {
+        const raw = localStorage.getItem("zenify_player_pos");
+        if (raw) {
+          const p = JSON.parse(raw);
+          if (p && p.id === currentTrack.id && typeof p.t === "number" && p.t > 0 && (!d || p.t < d)) {
+            audio.currentTime = p.t;
+          }
+        }
+      } catch {}
     }
     if (playCountedRef.current !== currentTrack.id) {
       playCountedRef.current = currentTrack.id;
@@ -436,7 +485,11 @@ export default function BottomPlayer() {
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch(e => {
-          if (e.name !== 'AbortError') {
+          // Browser blocked autoplay (e.g. after a fresh page load) — reflect the
+          // real state so the UI doesn't show "playing" while it's actually silent.
+          if (e.name === 'NotAllowedError') {
+            setIsPlaying(false);
+          } else if (e.name !== 'AbortError') {
             console.error("Playback failed:", e);
           }
         });
@@ -444,12 +497,33 @@ export default function BottomPlayer() {
     }
   }, [currentTrackIndex, isPlaying, tracks]);
 
+  const prevVolumeRef = useRef(0.8); // remembers the level to restore after mute
+
+  const applyVolume = (v: number) => {
+    const clamped = Math.min(1, Math.max(0, v));
+    setVolume(clamped);
+    // Once the audio graph is up, volume is the gain node (the element stays at
+    // full level so the analyser/visualizer sees the real signal). Before that,
+    // fall back to the element's own volume.
+    if (gainNodeRef.current) gainNodeRef.current.gain.value = clamped;
+    else if (audioRef.current) audioRef.current.volume = clamped;
+  };
+
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
-    const newVolume = parseFloat(e.target.value);
-    setVolume(newVolume);
-    if (audioRef.current) {
-      audioRef.current.volume = newVolume;
+    const v = parseFloat(e.target.value);
+    if (v > 0) prevVolumeRef.current = v;
+    applyVolume(v);
+  };
+
+  // Click the speaker icon to mute (volume 0) / unmute (restore previous level).
+  const toggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (volume > 0) {
+      prevVolumeRef.current = volume;
+      applyVolume(0);
+    } else {
+      applyVolume(prevVolumeRef.current || 0.5);
     }
   };
 
@@ -466,13 +540,9 @@ export default function BottomPlayer() {
   useEffect(() => {
     if (isExpanded) return;
 
-    // Read the theme accent so the played bars match the rest of the UI
-    let ar = 20, ag = 184, ab = 166; // fallback teal
-    try {
-      const hex = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
-      const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-      if (m) { ar = parseInt(m[1].slice(0, 2), 16); ag = parseInt(m[1].slice(2, 4), 16); ab = parseInt(m[1].slice(4, 6), 16); }
-    } catch {}
+    // Match the played bars to the cover colour (same as the rest of the player)
+    let ar = 45, ag = 212, ab = 191; // fallback teal
+    if (coverColor) { ar = coverColor.r; ag = coverColor.g; ab = coverColor.b; }
 
     let animationFrame: number;
     const renderFrame = () => {
@@ -494,27 +564,31 @@ export default function BottomPlayer() {
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
       const barWidth = (WIDTH / bufferLength) * 2.5;
-      let barHeight;
       let x = 0;
+      const currentProgressIdx = duration ? (progress / duration) * bufferLength : 0;
 
       for (let i = 0; i < bufferLength; i++) {
-        barHeight = dataArray[i] / 2;
-        const y = (HEIGHT - barHeight) / 2;
-        const currentProgressIdx = duration ? (progress / duration) * bufferLength : 0;
-        
+        const v = dataArray[i] / 255;               // 0..1 — now independent of volume
+        const barHeight = Math.max(2, v * HEIGHT);  // scaled to the canvas (no overflow), small floor
+        const y = (HEIGHT - barHeight) / 2;         // mirrored around the centre line
+        const w = Math.max(1, barWidth - 2);
+        const r = Math.min(w / 2, barHeight / 2);   // rounded ends
+
         if (i < currentProgressIdx) {
-           ctx.fillStyle = `rgba(${ar}, ${ag}, ${ab}, ${Math.max(0.4, barHeight / 100)})`;
+          ctx.fillStyle = `rgba(${ar}, ${ag}, ${ab}, ${Math.max(0.45, v)})`;
         } else {
-           ctx.fillStyle = `rgba(148, 163, 184, ${Math.max(0.1, barHeight / 150)})`;
+          ctx.fillStyle = `rgba(148, 163, 184, ${Math.max(0.12, v * 0.7)})`;
         }
-        
-        ctx.fillRect(x, y, barWidth - 1, barHeight);
+
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, barHeight, r);
+        ctx.fill();
         x += barWidth;
       }
     };
     renderFrame();
     return () => cancelAnimationFrame(animationFrame);
-  }, [isExpanded]);
+  }, [isExpanded, coverColor]);
 
   const rawUrl = currentTrack?.file_url || "";
   const audioSrc = rawUrl.includes(".r2.dev/")
@@ -526,6 +600,14 @@ export default function BottomPlayer() {
   if (!currentTrack) {
     return null;
   }
+
+  // Tint the fullscreen player to match the cover (falls back to teal).
+  const cc = coverColor || { r: 45, g: 212, b: 191 };
+  const accent = `rgb(${cc.r}, ${cc.g}, ${cc.b})`;
+  const accentSoft = `rgba(${cc.r}, ${cc.g}, ${cc.b}, 0.5)`;
+  const ambientBg =
+    `radial-gradient(120% 75% at 50% -10%, rgba(${cc.r}, ${cc.g}, ${cc.b}, 0.42), transparent 55%),` +
+    `linear-gradient(180deg, rgba(${cc.r}, ${cc.g}, ${cc.b}, 0.16) 0%, #0a0c11 62%)`;
 
   return (
     <>
@@ -543,8 +625,9 @@ export default function BottomPlayer() {
       {/*  EXPANDED PLAYER                                                   */}
       {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {isExpanded ? (
-        <div 
-          className="fixed inset-0 h-screen w-screen z-[100] flex flex-col bg-[#1e2535]/95 backdrop-blur-3xl overflow-hidden"
+        <div
+          className="fixed inset-0 h-screen w-screen z-[100] flex flex-col backdrop-blur-3xl overflow-hidden"
+          style={{ background: ambientBg }}
           onContextMenu={(e) => e.preventDefault()}
         >
           {currentTrack.cover_url && (
@@ -560,10 +643,6 @@ export default function BottomPlayer() {
             />
           )}
           
-          <div className="absolute inset-0 z-0 pointer-events-none">
-            <NeuronVisualizer analyser={analyserRef.current} />
-          </div>
-
           {/* â”€â”€ TOP BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <div className="relative z-10 flex items-center justify-between px-5 pt-5 pb-2 flex-shrink-0">
             {/* Close */}
@@ -585,7 +664,7 @@ export default function BottomPlayer() {
                   <span className="eq-bar" />
                 </span>
               )}
-              <span className="text-[10px] font-black tracking-[0.35em] text-teal-400 uppercase">Now Playing</span>
+              <span className="text-[10px] font-black tracking-[0.35em] uppercase" style={{ color: accent }}>Now Playing</span>
             </div>
 
             {/* Playlist / queue icon */}
@@ -619,82 +698,73 @@ export default function BottomPlayer() {
             )}
 
             {/* â”€â”€ PLAYER PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-            <div className={`flex flex-col items-center lg:flex-1 lg:flex lg:flex-col lg:items-center lg:justify-center px-6 pb-6 overflow-y-auto ${hasLyrics && activeTab === "lyrics" ? "hidden lg:flex" : "flex"}`}>
-
-              {/* Cover Art — breathes with playback (Apple Music style) */}
-              <div
-                className="w-56 h-56 sm:w-64 sm:h-64 lg:w-72 lg:h-72 rounded-[28px] overflow-hidden flex-shrink-0 mt-4 mb-7 transition-transform duration-700 ease-out will-change-transform"
-                style={{
-                  transform: isPlaying ? "scale(1)" : "scale(0.86)",
-                  boxShadow: isPlaying
-                    ? "0 30px 80px rgba(0,0,0,0.55), 0 0 70px var(--accent-glow)"
-                    : "0 16px 44px rgba(0,0,0,0.45)",
-                }}
-              >
-                <LargeCoverArt title={currentTrack.title} category={currentTrack.category} coverUrl={currentTrack.cover_url} size="lg" />
-              </div>
-
-              {/* Track Meta */}
-              <div className="w-full text-center mb-5 px-2">
-                {/* Category + Hi-Res chip */}
-                <div className="flex items-center justify-center gap-2 mb-2.5">
-                  <span className="text-[10px] font-bold tracking-[0.3em] text-slate-500 uppercase">
-                    {currentTrack.category}
-                  </span>
-                  {formatAudioSpecs(currentTrack) && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-widest border border-white/20 shadow-[0_0_12px_rgba(45,212,191,0.4)]">
-                      {formatAudioSpecs(currentTrack)}
-                    </span>
+            {/* LEFT: track info + actions (desktop) */}
+            <div className="hidden lg:flex lg:flex-col lg:justify-center lg:w-[30%] xl:w-[26%] flex-shrink-0 px-10 gap-4">
+              <h2 className="font-black text-4xl xl:text-5xl text-white leading-[1.05] tracking-tight drop-shadow-lg">
+                {cleanTitle(currentTrack.title)}
+              </h2>
+              {currentTrack.artist ? (
+                <Link href={`/artist/${encodeURIComponent(currentTrack.artist)}`} onClick={() => setIsExpanded(false)} className="text-lg font-semibold hover:underline w-fit" style={{ color: accent }}>
+                  {currentTrack.artist}
+                </Link>
+              ) : (
+                <p className="text-lg font-semibold" style={{ color: accent }}>{currentTrack.category}</p>
+              )}
+              {(currentTrack.album || currentTrack.year) && (
+                <p className="text-sm text-slate-400 -mt-2">
+                  {currentTrack.album}{currentTrack.album && currentTrack.year ? "  ·  " : ""}{currentTrack.year || ""}
+                </p>
+              )}
+              {/* Hi-Res badges */}
+              {(currentTrack.bit_depth || currentTrack.sample_rate) && (
+                <div className="flex items-center gap-2 mt-1">
+                  {currentTrack.bit_depth && (
+                    <span className="px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider border" style={{ color: accent, borderColor: accentSoft, background: `rgba(${cc.r},${cc.g},${cc.b},0.12)` }}>{currentTrack.bit_depth}-bit</span>
+                  )}
+                  {currentTrack.sample_rate && (
+                    <span className="px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider border" style={{ color: accent, borderColor: accentSoft, background: `rgba(${cc.r},${cc.g},${cc.b},0.12)` }}>{currentTrack.sample_rate / 1000}kHz</span>
                   )}
                 </div>
+              )}
+              {/* Actions */}
+              <div className="flex items-center gap-3 mt-3">
+                <button onClick={() => setLiked((v) => !v)} className="w-11 h-11 rounded-full flex items-center justify-center transition-all active:scale-90" style={{ background: liked ? accent : "rgba(255,255,255,0.08)", color: liked ? "#fff" : "#cbd5e1" }} title="Like">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                </button>
+                <button className="w-11 h-11 rounded-full flex items-center justify-center bg-white/[0.08] text-slate-300 hover:text-white transition-all active:scale-90" title="Add to playlist">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                </button>
+                <button className="w-11 h-11 rounded-full flex items-center justify-center bg-white/[0.08] text-slate-300 hover:text-white transition-all active:scale-90" title="More">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                </button>
+              </div>
+            </div>
 
-                {/* Title */}
-                <h2 className="font-black text-2xl sm:text-[1.75rem] text-white leading-tight tracking-tight mb-1.5 drop-shadow-lg px-4">
+            {/* CENTER: cover + glow */}
+            <div className={`flex flex-col items-center justify-center lg:flex-1 px-6 overflow-y-auto ${hasLyrics && activeTab === "lyrics" ? "hidden lg:flex" : "flex"}`}>
+              <div className="relative flex items-center justify-center mt-2 mb-12">
+                {/* soft ambient glow (no hard ring) */}
+                <div className="absolute rounded-full blur-[100px] pointer-events-none" style={{ width: "130%", height: "130%", background: `radial-gradient(circle, ${accentSoft}, transparent 66%)` }} />
+                {/* big cover */}
+                <div
+                  className="relative w-72 h-72 sm:w-80 sm:h-80 lg:w-[24rem] lg:h-[24rem] xl:w-[28rem] xl:h-[28rem] rounded-2xl overflow-hidden flex-shrink-0"
+                  style={{ boxShadow: `0 40px 100px rgba(0,0,0,0.6), 0 0 80px ${accentSoft}` }}
+                >
+                  <LargeCoverArt title={currentTrack.title} category={currentTrack.category} coverUrl={currentTrack.cover_url} size="lg" />
+                </div>
+              </div>
+
+              {/* Mobile-only meta (left column is desktop-only) */}
+              <div className="lg:hidden w-full text-center mt-4 mb-2 px-2">
+                <h2 className="font-black text-2xl text-white leading-tight tracking-tight mb-1">
                   {cleanTitle(currentTrack.title)}
                 </h2>
-
-                {/* Artist */}
                 {currentTrack.artist ? (
-                  <Link
-                    href={`/artist/${encodeURIComponent(currentTrack.artist)}`}
-                    onClick={() => setIsExpanded(false)}
-                    className="text-base font-semibold drop-shadow-md hover:underline inline-block"
-                    style={{ color: "var(--accent-light)" }}
-                  >
+                  <Link href={`/artist/${encodeURIComponent(currentTrack.artist)}`} onClick={() => setIsExpanded(false)} className="text-base font-semibold hover:underline" style={{ color: accent }}>
                     {currentTrack.artist}
                   </Link>
                 ) : (
-                  <p className="text-base font-semibold drop-shadow-md" style={{ color: "var(--accent-light)" }}>
-                    {currentTrack.category}
-                  </p>
-                )}
-
-                {/* Album / Year / Genre */}
-                {(currentTrack.album || currentTrack.year || currentTrack.genre) && (
-                  <div className="flex items-center justify-center flex-wrap gap-x-2.5 gap-y-1 mt-3">
-                    {currentTrack.album && (
-                      <span className="text-xs text-slate-400 font-medium truncate max-w-[180px]">
-                        {currentTrack.album}
-                      </span>
-                    )}
-                    {currentTrack.album && (currentTrack.year || currentTrack.genre) && (
-                      <span className="w-[3px] h-[3px] rounded-full bg-slate-600 inline-block" />
-                    )}
-                    {currentTrack.year && (
-                      <span className="text-xs text-slate-500 font-medium tabular-nums">
-                        {currentTrack.year}
-                      </span>
-                    )}
-                    {currentTrack.year && currentTrack.genre && (
-                      <span className="w-[3px] h-[3px] rounded-full bg-slate-600 inline-block" />
-                    )}
-                    {currentTrack.genre && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase"
-                        style={{ background: "rgba(255,255,255,0.08)", color: "#94a3b8" }}>
-                        {currentTrack.genre}
-                      </span>
-                    )}
-                  </div>
+                  <p className="text-base font-semibold" style={{ color: accent }}>{currentTrack.category}</p>
                 )}
               </div>
 
@@ -711,8 +781,8 @@ export default function BottomPlayer() {
                   }}
                 >
                   <div
-                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-teal-400 to-teal-300 rounded-full shadow-[0_0_8px_rgba(45,212,191,0.7)] transition-all"
-                    style={{ width: `${progressPercent}%` }}
+                    className="absolute top-0 left-0 h-full rounded-full transition-all"
+                    style={{ width: `${progressPercent}%`, background: accent, boxShadow: `0 0 10px ${accentSoft}` }}
                   />
                   {/* scrubber dot */}
                   <div
@@ -733,7 +803,7 @@ export default function BottomPlayer() {
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleShuffle(); }}
                   className="transition-all active:scale-90 hover:scale-110"
-                  style={{ color: shuffle ? "#2dd4bf" : "#94a3b8" }}
+                  style={{ color: shuffle ? accent : "#94a3b8" }}
                   title={shuffle ? "Shuffle: on" : "Shuffle: off"}
                 >
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
@@ -755,7 +825,8 @@ export default function BottomPlayer() {
                 {/* Play / Pause */}
                 <button
                   onClick={togglePlay}
-                  className="w-20 h-20 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 text-white flex items-center justify-center shadow-[0_0_30px_rgba(45,212,191,0.5)] hover:shadow-[0_0_45px_rgba(45,212,191,0.7)] hover:scale-105 active:scale-95 transition-all"
+                  className="w-20 h-20 rounded-full text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+                  style={{ background: accent, boxShadow: `0 0 35px ${accentSoft}` }}
                 >
                   {isPlaying ? (
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor">
@@ -782,7 +853,7 @@ export default function BottomPlayer() {
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleRepeat(); }}
                   className="relative transition-all active:scale-90 hover:scale-110"
-                  style={{ color: repeatMode !== "off" ? "#2dd4bf" : "#94a3b8" }}
+                  style={{ color: repeatMode !== "off" ? accent : "#94a3b8" }}
                   title={`Repeat: ${repeatMode}`}
                 >
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
@@ -816,7 +887,7 @@ export default function BottomPlayer() {
 
             {/* â”€â”€ LYRICS PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             {hasLyrics && (
-              <div className={`lg:flex-1 lg:flex lg:flex-col lg:justify-center overflow-hidden px-6 pb-6 ${activeTab === "player" ? "hidden lg:flex" : "flex flex-col"}`}>
+              <div className={`lg:w-[26%] xl:w-[23%] flex-shrink-0 lg:flex lg:flex-col lg:justify-center overflow-hidden px-6 pb-6 ${activeTab === "player" ? "hidden lg:flex" : "flex flex-col"}`}>
                 <div
                   className="w-full flex-1 overflow-hidden"
                   style={{
@@ -903,7 +974,7 @@ export default function BottomPlayer() {
                                 /* â”€â”€ Apple Music sweep + per-word scale â”€â”€ */
                                 <span
                                   data-active-line-words
-                                  className="text-2xl sm:text-3xl lg:text-4xl font-black leading-tight block"
+                                  className="text-lg sm:text-xl lg:text-2xl font-black leading-snug block"
                                   style={{ color: "rgba(255,255,255,0.28)" }}
                                 >
                                   {lyric.text.split(/\s+/).map((word, wi, arr) => (
@@ -922,7 +993,7 @@ export default function BottomPlayer() {
                                   ))}
                                 </span>
                               ) : (
-                                <span className="text-xl sm:text-2xl lg:text-3xl font-extrabold leading-tight block text-white">
+                                <span className="text-sm sm:text-base lg:text-lg font-bold leading-snug block text-white/90">
                                   {lyric.text}
                                 </span>
                               )}
@@ -931,7 +1002,7 @@ export default function BottomPlayer() {
                         })}
                       </div>
                     ) : (
-                      <div className="text-xl font-extrabold leading-relaxed text-white/80 whitespace-pre-wrap pb-32">
+                      <div className="text-sm font-semibold leading-relaxed text-white/70 whitespace-pre-wrap pb-32">
                         {currentTrack.lyrics || "Searching for lyrics..."}
                       </div>
                     )}
@@ -957,11 +1028,8 @@ export default function BottomPlayer() {
               <LargeCoverArt title={currentTrack.title} category={currentTrack.category} coverUrl={currentTrack.cover_url} size="sm" />
             </div>
             <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-              <div className="font-bold text-sm truncate flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-                <span className="truncate">{cleanTitle(currentTrack.title)}</span>
-                {formatAudioSpecs(currentTrack) && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-wider border border-white/20 shadow-[0_0_10px_rgba(45,212,191,0.3)] flex-shrink-0">{formatAudioSpecs(currentTrack)}</span>
-                )}
+              <div className="font-bold text-sm truncate" style={{ color: "var(--text-primary)" }}>
+                {cleanTitle(currentTrack.title)}
               </div>
               {currentTrack.artist ? (
                 <Link
@@ -989,14 +1057,23 @@ export default function BottomPlayer() {
           <div className="flex items-center gap-4 md:gap-6 w-full md:flex-1 order-3 md:order-2 px-0 md:px-8" onClick={e => e.stopPropagation()}>
             
             {/* Play Controls */}
-            <div className="flex items-center gap-4 flex-shrink-0">
+            <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+              {/* Shuffle */}
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleShuffle(); }}
+                className="hover:opacity-80 transition-opacity"
+                style={{ color: shuffle ? accent : "var(--text-muted)" }}
+                title={shuffle ? "Shuffle: on" : "Shuffle: off"}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+              </button>
               <button onClick={playPrevTrack} className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
               </button>
               <button
                 onClick={togglePlay}
                 className="w-10 h-10 rounded-full text-white flex items-center justify-center hover:scale-105 transition-transform"
-                style={{ background: "var(--accent)", boxShadow: "0 0 15px var(--accent-glow)" }}
+                style={{ background: accent, boxShadow: `0 0 15px ${accentSoft}` }}
               >
                 {isPlaying ? (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
@@ -1006,6 +1083,18 @@ export default function BottomPlayer() {
               </button>
               <button onClick={() => playNextTrack()} className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+              </button>
+              {/* Repeat */}
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleRepeat(); }}
+                className="relative hover:opacity-80 transition-opacity"
+                style={{ color: repeatMode !== "off" ? accent : "var(--text-muted)" }}
+                title={`Repeat: ${repeatMode}`}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+                {repeatMode === "one" && (
+                  <span className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full text-[7px] font-black flex items-center justify-center" style={{ background: accent, color: "#0d111c" }}>1</span>
+                )}
               </button>
             </div>
 
@@ -1027,7 +1116,7 @@ export default function BottomPlayer() {
 
                 <div className="absolute inset-0 w-full h-full opacity-0 group-hover:opacity-100 flex items-center transition-opacity">
                   <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
-                    <div className="h-full" style={{ width: `${progressPercent}%`, background: "var(--accent)" }}></div>
+                    <div className="h-full" style={{ width: `${progressPercent}%`, background: accent }}></div>
                   </div>
                 </div>
                 
@@ -1043,8 +1132,29 @@ export default function BottomPlayer() {
 
           {/* Extra controls */}
           <div className="hidden md:flex items-center justify-end gap-4 w-1/3 order-2 md:order-3" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+            {/* Hi-Res quality badge — kept separate from the title */}
+            {formatAudioSpecs(currentTrack) && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-extrabold bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-wider border border-white/20 shadow-[0_0_10px_rgba(45,212,191,0.3)] flex-shrink-0">
+                {formatAudioSpecs(currentTrack)}
+              </span>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleMute}
+                title={volume === 0 ? "Unmute" : "Mute"}
+                className="transition-colors hover:text-[var(--text-primary)]"
+                style={{ color: volume === 0 ? accent : "var(--text-muted)" }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d={
+                    volume === 0
+                      ? "M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 15.91 21 14 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
+                      : volume < 0.5
+                      ? "M5 9v6h4l5 5V4L9 9H5zm11.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"
+                      : "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
+                  } />
+                </svg>
+              </button>
               <input
                 type="range"
                 min="0"
@@ -1052,9 +1162,16 @@ export default function BottomPlayer() {
                 step="0.01"
                 value={volume}
                 onChange={handleVolumeChange}
-                className="w-20 h-1 rounded-full appearance-none outline-none"
-                style={{ background: "var(--border-card)", accentColor: "var(--text-primary)" }}
+                title={`${Math.round(volume * 100)}%`}
+                className="w-24 h-1.5 rounded-full appearance-none outline-none cursor-pointer"
+                style={{
+                  background: `linear-gradient(to right, ${accent} ${volume * 100}%, var(--border-card) ${volume * 100}%)`,
+                  accentColor: accent,
+                }}
               />
+              <span className="text-[10px] font-mono tabular-nums w-7 text-right" style={{ color: "var(--text-muted)" }}>
+                {Math.round(volume * 100)}
+              </span>
             </div>
           </div>
         </div>

@@ -67,8 +67,7 @@ export default function TrackGrid({
               tabIndex={0}
               onClick={() => playTrack(tracks, i)}
               onKeyDown={(e) => e.key === "Enter" && playTrack(tracks, i)}
-              className="group flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all"
-              style={{ background: "var(--bg-secondary)" }}
+              className="group flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-colors hover:bg-[var(--bg-secondary)]"
             >
               <div className="relative w-14 h-14 flex-shrink-0">
                 <Cover track={t} rounded="rounded-lg" />
@@ -108,7 +107,7 @@ export default function TrackGrid({
               onKeyDown={(e) => e.key === "Enter" && playTrack(tracks, i)}
               className="group flex flex-col gap-2 cursor-pointer"
             >
-              <div className="relative w-full aspect-square rounded-xl overflow-hidden transition-transform duration-300 group-hover:scale-[1.03]">
+              <div className="relative w-full aspect-square rounded-xl overflow-hidden">
                 <Cover track={t} rounded="" />
                 <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
                   <span className="w-9 h-9 rounded-full flex items-center justify-center shadow-lg" style={{ background: "var(--accent)" }}>

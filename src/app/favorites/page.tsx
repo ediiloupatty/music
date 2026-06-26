@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
+import Sidebar from "@/components/Sidebar";
 import { getUserFavorites, getTracksByCategory, Track } from "@/lib/cloudflare";
 import MainTracksContainer from "@/components/MainTracksContainer";
 
@@ -54,10 +55,15 @@ export default async function FavoritesPage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ background: "var(--bg-base)", color: "var(--text-primary)" }}
+      className="flex h-screen font-sans overflow-hidden relative gap-2"
+      style={{ background: "var(--bg-primary)", color: "var(--text-primary)" }}
     >
-      {/* Header */}
+      <Sidebar currentCategory={null} />
+
+      {/* ─── MAIN AREA ────────────────────────────────────────────── */}
+      <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto pb-44" style={{ background: "var(--bg-base)" }}>
+          {/* Header */}
       <header
         className="flex items-center gap-4 px-5 pt-6 pb-4 border-b flex-shrink-0"
         style={{ borderColor: "var(--border-subtle)" }}
@@ -115,6 +121,8 @@ export default async function FavoritesPage() {
             isLoggedIn={isLoggedIn}
           />
         )}
+      </div>
+        </div>
       </div>
     </div>
   );

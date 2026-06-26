@@ -1,7 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Track } from "@/lib/cloudflare";
+
+const STORAGE_KEY = "zenify_player";
 
 type RepeatMode = "off" | "all" | "one";
 
@@ -28,6 +30,40 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
   const [shuffle, setShuffle] = useState(false);
+
+  // Restore the last session on reload so playback stays in sync across pages /
+  // refreshes. We also restore `isPlaying`; the BottomPlayer attempts to resume
+  // and gracefully falls back to paused if the browser blocks autoplay (so the
+  // UI never lies about the real audio state). Playback position is restored by
+  // the BottomPlayer from its own saved value.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (Array.isArray(saved.tracks) && saved.tracks.length > 0) {
+        setTracks(saved.tracks);
+        setCurrentTrackIndex(
+          Math.min(Math.max(0, saved.currentTrackIndex || 0), saved.tracks.length - 1)
+        );
+        if (saved.repeatMode) setRepeatMode(saved.repeatMode);
+        if (typeof saved.shuffle === "boolean") setShuffle(saved.shuffle);
+        if (typeof saved.isPlaying === "boolean") setIsPlaying(saved.isPlaying);
+      }
+    } catch {}
+  }, []);
+
+  // Persist the queue + play state whenever it changes.
+  useEffect(() => {
+    try {
+      if (tracks.length > 0) {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ tracks, currentTrackIndex, repeatMode, shuffle, isPlaying })
+        );
+      }
+    } catch {}
+  }, [tracks, currentTrackIndex, repeatMode, shuffle, isPlaying]);
 
   const playTrack = (newTracks: Track[], startIndex: number) => {
     setTracks(newTracks);

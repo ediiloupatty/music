@@ -7,7 +7,6 @@ import FavoriteButton from "./FavoriteButton";
 import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
 import { cleanTitle } from "@/lib/cleanTitle";
-import { formatAudioSpecs } from "@/lib/formatSpecs";
 import { moveTrackToPlaylistAction } from "@/app/actions/tracks";
 
 // Generate a consistent index from a string
@@ -178,7 +177,6 @@ export default function MainTracksContainer({
                 <span className="w-11 flex-shrink-0" />
                 <span className="flex-1 min-w-0">Title</span>
                 <span className="w-36 lg:w-44 flex-shrink-0">Artist</span>
-                <span className="hidden lg:block w-36 lg:w-44 flex-shrink-0">Album</span>
                 <span className="w-12 text-right flex-shrink-0">Time</span>
                 <span className="flex-shrink-0" style={{ width: isLoggedIn ? "4rem" : "1.75rem" }} />
               </div>
@@ -237,11 +235,6 @@ export default function MainTracksContainer({
                       style={{ color: isCurrent ? "var(--accent)" : "var(--text-primary)" }}
                     >
                       {cleanTitle(track.title)}
-                      {formatAudioSpecs(track) && (
-                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-gradient-to-r from-teal-400 to-indigo-500 text-white tracking-wider border border-white/20 align-middle">
-                          {formatAudioSpecs(track)}
-                        </span>
-                      )}
                     </span>
                     {/* Stacked artist: always in list mode; mobile-only in columns mode */}
                     <span className={columns ? "md:hidden" : "block"}>
@@ -281,11 +274,6 @@ export default function MainTracksContainer({
                           </span>
                         )}
                       </div>
-                      <div className="hidden lg:block w-36 lg:w-44 flex-shrink-0 min-w-0">
-                        <span className="text-xs truncate block" style={{ color: "var(--text-muted)" }}>
-                          {track.album || "—"}
-                        </span>
-                      </div>
                       <span
                         className="hidden sm:block w-12 text-right text-xs font-mono tabular-nums flex-shrink-0"
                         style={{ color: "var(--text-muted)" }}
@@ -302,9 +290,8 @@ export default function MainTracksContainer({
                         {dur}
                       </span>
                     )}
-                    <FavoriteButton trackId={track.id} initialIsFavorited={isFavorited} isLoggedIn={isLoggedIn} />
 
-                    {/* ⋯ menu */}
+                    {/* ⋯ menu — hidden until the row is hovered */}
                     {isLoggedIn && (
                       <div className="relative">
                         <button
@@ -367,6 +354,9 @@ export default function MainTracksContainer({
                         )}
                       </div>
                     )}
+
+                    {/* Favorite (heart) — far right */}
+                    <FavoriteButton trackId={track.id} initialIsFavorited={isFavorited} isLoggedIn={isLoggedIn} />
                   </div>
                 </div>
               );

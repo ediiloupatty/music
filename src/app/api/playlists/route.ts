@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { getPlaylists, queryD1, initializeD1Tables } from "@/lib/cloudflare";
+import { getPlaylists, getCategoryCounts } from "@/lib/cloudflare";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    await initializeD1Tables();
     const [playlists, counts] = await Promise.all([
       getPlaylists(),
-      queryD1("SELECT category, COUNT(*) as count FROM tracks GROUP BY category"),
+      getCategoryCounts(),
     ]);
 
     const countMap: Record<string, number> = {};
