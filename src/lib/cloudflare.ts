@@ -240,22 +240,36 @@ const TRACK_SELECT_WITH_COVER = `
 // ─── Media URL normalization ────────────────────────────────────────────────
 // The public R2 bucket (pub-*.r2.dev) is blocked by some ISPs, so rewrite every
 // media URL to go through our signed-redirect proxy routes (/api/cover, /api/audio)
-// which hit the *.r2.cloudflarestorage.com endpoint instead. Safe + idempotent:
-// already-local ("/...") and unknown external URLs are returned untouched.
+// which hit the *.r2.cloudflarestorage.com endpoint instead.
+//
+// CDN fast path: if R2_CDN_URL is set (a custom domain connected to the R2
+// bucket and cached at Cloudflare's edge), covers are served straight from that
+// domain — no proxy, no redirect, no presign. Audio always stays on the proxy
+// route (it has referer protection and the files are large). When R2_CDN_URL is
+// unset, behavior is identical to before. Safe + idempotent: unknown external
+// URLs and non-media local paths are returned untouched.
+const R2_CDN_BASE = (process.env.R2_CDN_URL || "").replace(/\/+$/, "");
+
+// Pull the underlying R2 object key out of whatever form the URL currently has:
+// an r2.dev/pub URL, an already-proxied "/api/cover|audio/<key>" path, or a
+// CDN URL. Returns null for anything we don't manage (so it passes through).
 function r2KeyFromUrl(url: string): string | null {
+  if (url.startsWith("/api/cover/")) return url.slice("/api/cover/".length) || null;
+  if (url.startsWith("/api/audio/")) return url.slice("/api/audio/".length) || null;
   if (url.includes(".r2.dev/")) return url.split(".r2.dev/").pop() || null;
   const pub = (process.env.R2_PUBLIC_URL || "").replace(/\/+$/, "");
   if (pub && url.startsWith(pub)) return url.slice(pub.length).replace(/^\/+/, "");
+  if (R2_CDN_BASE && url.startsWith(R2_CDN_BASE)) return url.slice(R2_CDN_BASE.length).replace(/^\/+/, "");
   return null;
 }
 function toProxyUrl(url: string | null | undefined, kind: "audio" | "cover"): string | undefined {
   if (!url) return undefined;
-  if (url.startsWith("/")) return url; // already a local / proxied path
   const rawKey = r2KeyFromUrl(url);
-  if (!rawKey) return url; // external URL we don't manage — leave it
+  if (rawKey === null) return url; // local path or external URL we don't manage — leave it
   let key = rawKey;
   try { key = decodeURIComponent(rawKey); } catch { /* keep as-is */ }
   const path = key.split("/").map(encodeURIComponent).join("/");
+  if (kind === "cover" && R2_CDN_BASE) return `${R2_CDN_BASE}/${path}`;
   return `/api/${kind}/${path}`;
 }
 function normalizeTrack(t: any): Track {
