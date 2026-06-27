@@ -91,7 +91,9 @@ type presence struct {
 
 // defaultURL is the web app the desktop loads. For production builds, bake the
 // deployed URL in at compile time with:
-//   go build -ldflags "-X main.defaultURL=https://your-zenify-url"
+//
+//	go build -ldflags "-X main.defaultURL=https://your-zenify-url"
+//
 // so end users never need to pass -url. Falls back to localhost for dev.
 var defaultURL = "http://localhost:3000"
 
