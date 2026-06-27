@@ -12,23 +12,30 @@ window.addEventListener('zenify:nowplaying', function (e) {
   try { window.zenifyPresence(e.detail); } catch (_) {}
 });
 
-// Reveal the (off-screen) window only after the page has fully loaded AND the
-// browser has painted at least one frame — two rAFs guarantee the dark UI is on
-// screen before the window is moved into view, so there is no flash.
+// Reveal the (off-screen) window as soon as the document has painted its first
+// frame (the dark shell / loading skeleton) — NOT on 'load'. With streaming SSR
+// and a slow backend, 'load' only fires once all data has arrived, which would
+// keep the window hidden the whole time (skeleton never seen) and then flash.
+// The root element paints dark from the first frame (inline bg on <html>), so
+// revealing early shows the skeleton with no white flash.
 (function revealOnReady() {
   var done = false;
-  function show() {
+  function reveal() {
     if (done) return; done = true;
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        try { window.winReveal(); } catch (_) {}
-      });
-    });
+    try { window.winReveal(); } catch (_) {}
   }
-  if (document.readyState === 'complete') show();
-  else window.addEventListener('load', show);
-  // Fallback so the window can never get stuck off-screen.
-  setTimeout(show, 4000);
+  function tick() {
+    if (done) return;
+    if (document.body && document.body.childNodes.length > 0) {
+      // One extra rAF so the first paint (incl. CSS) has actually landed.
+      requestAnimationFrame(function () { requestAnimationFrame(reveal); });
+    } else {
+      requestAnimationFrame(tick);
+    }
+  }
+  requestAnimationFrame(tick);
+  // Hard fallback so the window can never get stuck off-screen.
+  setTimeout(reveal, 3000);
 })();
 
 (function () {

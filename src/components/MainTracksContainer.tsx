@@ -301,7 +301,7 @@ export default function MainTracksContainer({
                       <div className="relative">
                         <button
                           onClick={() => setMenuOpenId(menuOpenId === track.id ? null : track.id)}
-                          className="w-7 h-7 rounded-full flex items-center justify-center transition-all hover:bg-[var(--bg-card-hover)] sm:opacity-0 sm:group-hover:opacity-100"
+                          className="w-7 h-7 rounded-full flex items-center justify-center transition-all hover:bg-[var(--bg-card-hover)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                           style={{ color: "var(--text-muted)" }}
                           title="More options"
                           disabled={movingId === track.id}

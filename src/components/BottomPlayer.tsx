@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
+import QueuePanel from "@/components/QueuePanel";
 import { useCoverColor } from "@/lib/useCoverColor";
 import { cleanTitle } from "@/lib/cleanTitle";
 import { formatAudioSpecs } from "@/lib/formatSpecs";
@@ -144,6 +145,7 @@ export default function BottomPlayer() {
   } = usePlayer();
 
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showQueue, setShowQueue] = useState(false);
   const [desktopOffset, setDesktopOffset] = useState(0);
   useEffect(() => {
     if ((window as { __ZENIFY_DESKTOP__?: boolean }).__ZENIFY_DESKTOP__) setDesktopOffset(32);
@@ -755,6 +757,8 @@ export default function BottomPlayer() {
         controlsList="nodownload"
       />
 
+      <QueuePanel open={showQueue} onClose={() => setShowQueue(false)} />
+
       {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {/*  EXPANDED PLAYER                                                   */}
       {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
@@ -1037,6 +1041,18 @@ export default function BottomPlayer() {
                   <span className="text-[10px] font-mono tabular-nums w-7 text-right text-slate-400">
                     {Math.round(volume * 100)}
                   </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowQueue((v) => !v); }}
+                    aria-label="Queue"
+                    aria-pressed={showQueue}
+                    title="Queue"
+                    className="flex-shrink-0 transition-colors"
+                    style={{ color: showQueue ? accent : "#94a3b8" }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M3 18h13v-2H3v2zm0-5h10v-2H3v2zm0-7v2h13V6H3zm18 9.59L17.42 12 21 8.41 19.59 7l-5 5 5 5L21 15.59z" />
+                    </svg>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1320,6 +1336,18 @@ export default function BottomPlayer() {
                 {formatAudioSpecs(currentTrack)}
               </span>
             )}
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowQueue((v) => !v); }}
+              aria-label="Queue"
+              aria-pressed={showQueue}
+              title="Queue"
+              className="transition-colors hover:text-[var(--text-primary)]"
+              style={{ color: showQueue ? accent : "var(--text-muted)" }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 18h13v-2H3v2zm0-5h10v-2H3v2zm0-7v2h13V6H3zm18 9.59L17.42 12 21 8.41 19.59 7l-5 5 5 5L21 15.59z" />
+              </svg>
+            </button>
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleMute}

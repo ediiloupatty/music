@@ -199,6 +199,7 @@ export default function HomeContent({
                       {isFeaturedPlaying ? "Pause" : "Play"}
                     </button>
                     <HeartButton
+                      key={featured.id}
                       trackId={featured.id}
                       initialIsFavorited={userFavorites.includes(featured.id)}
                       isLoggedIn={isLoggedIn}
@@ -383,7 +384,7 @@ export default function HomeContent({
                         {formatDuration(t.duration)}
                       </span>
                       {/* Actions */}
-                      <div className="hidden md:flex items-center gap-1 w-16 flex-shrink-0 justify-end" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1 w-10 md:w-16 flex-shrink-0 justify-end" onClick={(e) => e.stopPropagation()}>
                         <HeartButton
                           trackId={t.id}
                           initialIsFavorited={userFavorites.includes(t.id)}

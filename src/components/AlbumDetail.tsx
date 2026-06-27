@@ -286,7 +286,7 @@ export default function AlbumDetail({
                   <Heart trackId={track.id} initial={userFavorites.includes(track.id)} isLoggedIn={isLoggedIn} />
                   <button
                     onClick={() => downloadTrack(track)}
-                    className="transition-all hover:scale-110 active:scale-95 sm:opacity-0 sm:group-hover:opacity-100"
+                    className="transition-all hover:scale-110 active:scale-95 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                     style={{ color: "var(--text-muted)" }}
                     title="Download"
                   >

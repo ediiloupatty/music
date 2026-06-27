@@ -22,11 +22,15 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // The inline dark background on <html> makes the very first painted frame dark
+  // — before external CSS (and its var(--bg-base)) loads — killing the white
+  // flash on cold open / reload. Hardcoded to match --bg-base (dark theme).
   return (
     <html
       lang="en"
       data-theme="dark"
       className={`${geistSans.variable} h-full antialiased`}
+      style={{ backgroundColor: "#2e3440" }}
     >
       <body className="min-h-full flex flex-col" style={{ background: "var(--bg-base)", color: "var(--text-primary)" }}>
         <ThemeProvider>
