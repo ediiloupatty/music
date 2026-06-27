@@ -16,7 +16,9 @@ export default function PlaylistDetail({
   
   const currentPlayingId = playerTracks[currentTrackIndex]?.id;
   const firstCoverUrl = tracks.find(t => t.cover_url)?.cover_url;
-  const { accent, accentSoft, cc } = useCoverColor(firstCoverUrl);
+  // useCoverColor returns the dominant RGB of the cover (or null) — used to tint
+  // the header. Fall back to the teal accent when no colour is available.
+  const cc = useCoverColor(firstCoverUrl) ?? { r: 20, g: 184, b: 166 };
 
   const totalDuration = tracks.reduce((acc, t) => acc + (t.duration || 0), 0);
   const hours = Math.floor(totalDuration / 3600);
