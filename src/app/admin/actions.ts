@@ -7,6 +7,7 @@ import * as mm from "music-metadata";
 import sharp from "sharp";
 import { cleanTitle } from "@/lib/cleanTitle";
 import { fetchCoverArt } from "@/lib/coverArt";
+import { assertAdmin } from "@/lib/admin";
 
 // Normalize a text value for duplicate comparison: lowercase, collapse
 // whitespace, drop surrounding spaces. Null/empty all map to "".
@@ -28,6 +29,7 @@ async function compressCoverImage(input: Buffer | Uint8Array): Promise<Buffer> {
 }
 
 export async function uploadTrackAction(formData: FormData) {
+  await assertAdmin();
   try {
     // 1. Get form data
     const title = formData.get("title") as string;
@@ -187,6 +189,7 @@ export async function updateTrackAction(
   id: string,
   data: { title?: string; artist?: string; category?: string }
 ): Promise<{ success: boolean; error?: string }> {
+  await assertAdmin();
   try {
     const fields: string[] = [];
     const params: any[] = [];
@@ -211,6 +214,7 @@ export async function updateTrackAction(
 // ones that change. Fixes legacy rows like "01 Kasih Aba Aba" saved before
 // title cleaning existed.
 export async function recleanAllTitlesAction(): Promise<{ success: boolean; updated?: number; error?: string }> {
+  await assertAdmin();
   try {
     const rows = await queryD1(`SELECT id, title FROM tracks`) as { id: string; title: string }[];
     let updated = 0;
@@ -249,6 +253,7 @@ export async function saveDurationAction(trackId: string, duration: number): Pro
 // extracted. Downloads only the first chunk of each file from R2 (enough for the
 // audio header) and parses it. Per-track try/catch so one bad file doesn't abort.
 export async function backfillAudioSpecsAction(): Promise<{ success: boolean; updated?: number; error?: string }> {
+  await assertAdmin();
   try {
     await initializeD1Tables();
     const bucketName = process.env.R2_BUCKET_NAME || "zenify";
@@ -314,6 +319,7 @@ export async function backfillMissingCoversAction(): Promise<{
   notFound?: number;
   error?: string;
 }> {
+  await assertAdmin();
   try {
     await initializeD1Tables();
     const bucketName = process.env.R2_BUCKET_NAME || "music";
@@ -402,6 +408,7 @@ export async function backfillMissingCoversAction(): Promise<{
 // Upload (or replace) a manual cover image for an album. Used when the album
 // has no embedded art. Stored in R2 and upserted into the albums table by name.
 export async function setAlbumCoverAction(formData: FormData): Promise<{ success: boolean; error?: string }> {
+  await assertAdmin();
   try {
     const albumName = formData.get("album") as string;
     const file = formData.get("file") as File;
@@ -446,6 +453,7 @@ export async function setAlbumCoverAction(formData: FormData): Promise<{ success
 
 // Remove a manually-uploaded album cover (reverts to embedded art / placeholder).
 export async function removeAlbumCoverAction(albumName: string): Promise<{ success: boolean; error?: string }> {
+  await assertAdmin();
   try {
     if (!albumName) return { success: false, error: "Missing album name" };
 
@@ -480,6 +488,7 @@ export async function removeAlbumCoverAction(albumName: string): Promise<{ succe
 
 // Upload (or replace) an artist profile photo. Stored in R2, upserted by name.
 export async function setArtistImageAction(formData: FormData): Promise<{ success: boolean; error?: string }> {
+  await assertAdmin();
   try {
     const artistName = formData.get("artist") as string;
     const file = formData.get("file") as File;
@@ -525,6 +534,7 @@ export async function setArtistImageAction(formData: FormData): Promise<{ succes
 
 // Save / update an artist bio.
 export async function setArtistBioAction(artistName: string, bio: string): Promise<{ success: boolean; error?: string }> {
+  await assertAdmin();
   try {
     if (!artistName) return { success: false, error: "Missing artist name" };
     await initializeD1Tables();
@@ -544,6 +554,7 @@ export async function setArtistBioAction(artistName: string, bio: string): Promi
 
 // Remove an artist's uploaded photo (reverts to initial avatar).
 export async function removeArtistImageAction(artistName: string): Promise<{ success: boolean; error?: string }> {
+  await assertAdmin();
   try {
     if (!artistName) return { success: false, error: "Missing artist name" };
 
@@ -579,6 +590,7 @@ export async function removeArtistImageAction(artistName: string): Promise<{ suc
 }
 
 export async function deleteTrackAction(trackId: string, fileUrl: string) {
+  await assertAdmin();
   try {
     const bucketName = process.env.R2_BUCKET_NAME || "music";
     
@@ -613,6 +625,7 @@ export async function deleteTrackAction(trackId: string, fileUrl: string) {
 // changes, no deletions, audio untouched. Skips images that are already small,
 // so it's safe to run more than once.
 export async function compressAllCoversAction(): Promise<{ success: boolean; updated?: number; failed?: number; skipped?: number; error?: string }> {
+  await assertAdmin();
   try {
     await initializeD1Tables();
     const bucketName = process.env.R2_BUCKET_NAME || "music";

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { auth, signOut } from "@/auth";
+import { isAdminEmail } from "@/lib/admin";
 import PlaylistSection from "@/components/PlaylistSection";
 import SidebarProfile from "@/components/SidebarProfile";
 
 export default async function Sidebar({ currentCategory }: { currentCategory?: string | null }) {
   const session = await auth();
   const isLoggedIn = !!session?.user;
+  const isAdmin = isAdminEmail(session?.user?.email);
 
   return (
     <aside
@@ -47,14 +49,16 @@ export default async function Sidebar({ currentCategory }: { currentCategory?: s
           <span className="text-sm font-semibold text-[var(--text-muted)] group-hover:text-white transition-colors">Settings</span>
         </Link>
 
-        {/* Admin */}
-        <Link href="/admin" className="flex items-center gap-3 px-3 py-2.5 rounded-xl group transition-all hover:bg-white/5" title="Admin">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"
-            className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors flex-shrink-0">
-            <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
-          </svg>
-          <span className="text-sm font-semibold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">Admin</span>
-        </Link>
+        {/* Admin — only visible to the configured admin account */}
+        {isAdmin && (
+          <Link href="/admin" className="flex items-center gap-3 px-3 py-2.5 rounded-xl group transition-all hover:bg-white/5" title="Admin">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"
+              className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors flex-shrink-0">
+              <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
+            </svg>
+            <span className="text-sm font-semibold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">Admin</span>
+          </Link>
+        )}
 
         {/* Sign Out / Sign In */}
         {isLoggedIn ? (
