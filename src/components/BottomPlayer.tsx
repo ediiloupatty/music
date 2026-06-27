@@ -144,6 +144,10 @@ export default function BottomPlayer() {
   } = usePlayer();
 
   const [isExpanded, setIsExpanded] = useState(false);
+  const [desktopOffset, setDesktopOffset] = useState(0);
+  useEffect(() => {
+    if ((window as { __ZENIFY_DESKTOP__?: boolean }).__ZENIFY_DESKTOP__) setDesktopOffset(32);
+  }, []);
   // Volume persists across reloads/sessions. Lazy initialiser reads the saved
   // level (guarded for SSR where localStorage is unavailable).
   const [volume, setVolume] = useState<number>(() => {
@@ -700,25 +704,27 @@ export default function BottomPlayer() {
       {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {isExpanded ? (
         <div
-          className="fixed inset-0 h-screen w-screen z-[100] flex flex-col backdrop-blur-3xl overflow-hidden"
-          style={{ background: ambientBg }}
+          className="fixed inset-0 w-screen z-[100] flex flex-col backdrop-blur-3xl overflow-hidden"
+          style={{ background: ambientBg, top: desktopOffset, height: `calc(100vh - ${desktopOffset}px)` }}
           onContextMenu={(e) => e.preventDefault()}
         >
           {currentTrack.cover_url && (
-            <div 
+            <div
               className="absolute inset-0 z-0 opacity-40 mix-blend-screen pointer-events-none"
               style={{
                 backgroundImage: `url(${currentTrack.cover_url})`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 filter: 'blur(80px)',
-                transform: 'scale(1.2)'
+                transform: 'scale(1.2)',
+                top: 0,
+                bottom: 0,
               }}
             />
           )}
           
           {/* â”€â”€ TOP BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-          <div className="relative z-10 flex items-center justify-between px-5 pt-5 pb-2 flex-shrink-0">
+          <div className="relative z-10 flex items-center justify-between px-5 pb-2 flex-shrink-0" style={{ paddingTop: desktopOffset > 0 ? 8 : 20 }}>
             {/* Close */}
             <button 
               onClick={() => setIsExpanded(false)}

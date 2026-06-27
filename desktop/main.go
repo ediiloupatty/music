@@ -69,7 +69,12 @@ func main() {
 	hwnd := uintptr(w.Window())
 	decorateWindow(hwnd)
 
-	// Window controls invoked from the web titlebar (see DesktopTitlebar.tsx).
+	// Make the window invisible (alpha=0) so WebView2 renders in the background.
+	// The injected script calls winReveal() after the page's dark CSS is applied.
+	hideWindow(hwnd)
+	w.Bind("winReveal", func() { winReveal(hwnd) })
+
+	// Window controls invoked from the injected titlebar.
 	w.Bind("winMinimize", func() { winMinimize(hwnd) })
 	w.Bind("winToggleMaximize", func() { winToggleMaximize(hwnd) })
 	w.Bind("winDragStart", func() { winDragStart(hwnd) })

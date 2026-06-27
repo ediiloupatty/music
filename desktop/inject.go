@@ -12,6 +12,17 @@ window.addEventListener('zenify:nowplaying', function (e) {
   try { window.zenifyPresence(e.detail); } catch (_) {}
 });
 
+// Reveal the window after the page's dark CSS is applied so there is no white
+// flash. A short delay lets the first paint settle before AnimateWindow runs.
+(function revealOnReady() {
+  function show() { setTimeout(function(){ try { window.winReveal(); } catch(_){} }, 80); }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', show);
+  } else {
+    show();
+  }
+})();
+
 (function () {
   function call(n){ var f = window[n]; if (typeof f === 'function') f(); }
 

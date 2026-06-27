@@ -24,12 +24,17 @@ var (
 )
 
 const (
-	gwlpWndProc = ^uintptr(3) // -4
+	gwlpWndProc  = ^uintptr(3)  // -4  GWL_WNDPROC
+	gwlExStyle   = ^uintptr(19) // -20 GWL_EXSTYLE
+
+	wsExLayered = 0x00080000
+	lwaAlpha    = 0x00000002
 
 	swpNoZorder    = 0x0004
 	swpFrameChange = 0x0020
 
 	swMinimize = 6
+	swShow     = 5
 
 	wmNcCalcSize    = 0x0083
 	wmNcHitTest     = 0x0084
@@ -93,6 +98,16 @@ func setWindowIcon(hwnd uintptr) {
 // installFrameless subclasses the window so WM_NCCALCSIZE reports zero non-client
 // area (the title bar / borders vanish — no black strip — and the web content
 // fills the whole window). WM_NCHITTEST is handled to keep edge-resize working.
+// hideWindow makes the window invisible via a layered alpha=0 so WebView2 can
+// render in the background without the white-flash being visible. winReveal()
+// makes it opaque again — no minimize, no taskbar interaction needed.
+func hideWindow(hwnd uintptr) {
+	pSetLayered := user32.NewProc("SetLayeredWindowAttributes")
+	exStyle, _, _ := pGetWindowLong.Call(hwnd, gwlExStyle)
+	pSetWindowLong.Call(hwnd, gwlExStyle, exStyle|wsExLayered)
+	pSetLayered.Call(hwnd, 0, 0, lwaAlpha) // alpha = 0
+}
+
 func installFrameless(hwnd uintptr) {
 	wndProcCb = syscall.NewCallback(wndProc)
 	prev, _, _ := pSetWindowLong.Call(hwnd, gwlpWndProc, wndProcCb)
@@ -158,6 +173,15 @@ func hitTest(hwnd, lparam uintptr) uintptr {
 		return htBottom
 	}
 	return htClient
+}
+
+// winReveal makes the window fully opaque and brings it to the foreground.
+// Called from JS after DOMContentLoaded + a short delay so dark CSS is painted.
+func winReveal(hwnd uintptr) {
+	pSetLayered := user32.NewProc("SetLayeredWindowAttributes")
+	pSetForeground := user32.NewProc("SetForegroundWindow")
+	pSetLayered.Call(hwnd, 0, 255, lwaAlpha) // alpha = 255 (fully opaque)
+	pSetForeground.Call(hwnd)
 }
 
 func winMinimize(hwnd uintptr) { pShowWindow.Call(hwnd, swMinimize) }
