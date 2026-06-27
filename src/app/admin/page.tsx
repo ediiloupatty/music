@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import { uploadTrackAction, deleteTrackAction, updateTrackAction, recleanAllTitlesAction, backfillAudioSpecsAction, compressAllCoversAction } from "./actions";
+import { uploadTrackAction, deleteTrackAction, updateTrackAction, recleanAllTitlesAction, backfillAudioSpecsAction, compressAllCoversAction, backfillMissingCoversAction } from "./actions";
 import { cleanTitle } from "@/lib/cleanTitle";
 import AlbumManager from "@/components/AlbumManager";
 import ArtistManager from "@/components/ArtistManager";
@@ -90,6 +90,7 @@ export default function AdminPage() {
   const [recleaning, setRecleaning]         = useState(false);
   const [fetchingSpecs, setFetchingSpecs]   = useState(false);
   const [compressingCovers, setCompressingCovers] = useState(false);
+  const [fetchingCovers, setFetchingCovers] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement>(null);
 
   // Active tab — each major section is its own view instead of one long page.
@@ -238,6 +239,29 @@ export default function AdminPage() {
       });
     } else {
       setMessage({ type: "error", text: res.error || "Failed to compress covers" });
+    }
+    setTimeout(() => setMessage(null), 4000);
+  }
+
+  // ── Find missing covers (iTunes → Deezer lookup) ──────────────────────
+  async function handleFetchCovers() {
+    setFetchingCovers(true);
+    const res = await backfillMissingCoversAction();
+    setFetchingCovers(false);
+    if (res.success) {
+      mutate();
+      const found = res.updated || 0;
+      const missing = res.notFound || 0;
+      setMessage({
+        type: "success",
+        text: found
+          ? `Found covers for ${found} item${found > 1 ? "s" : ""}${missing ? `, ${missing} not found` : ""}.`
+          : missing
+          ? `No covers found (${missing} still missing).`
+          : "All tracks already have covers.",
+      });
+    } else {
+      setMessage({ type: "error", text: res.error || "Failed to find covers" });
     }
     setTimeout(() => setMessage(null), 4000);
   }
@@ -736,6 +760,27 @@ export default function AdminPage() {
                     </svg>
                   )}
                   <span className="hidden sm:inline">{compressingCovers ? "Compressing..." : "Compress covers"}</span>
+                </button>
+
+                {/* Find missing covers (iTunes → Deezer) */}
+                <button
+                  onClick={handleFetchCovers}
+                  disabled={fetchingCovers || tracks.length === 0}
+                  title="Search iTunes (then Deezer) for album art of tracks that have no cover, download it server-side and store it in R2. Safe to run repeatedly; one lookup per album."
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 disabled:opacity-40"
+                  style={{ background: "rgba(236,72,153,0.12)", border: "1px solid rgba(236,72,153,0.25)", color: "#f9a8d4" }}
+                >
+                  {fetchingCovers ? (
+                    <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 10-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1114 9.5 4.5 4.5 0 019.5 14z" />
+                    </svg>
+                  )}
+                  <span className="hidden sm:inline">{fetchingCovers ? "Searching..." : "Find covers"}</span>
                 </button>
 
                 {/* Search */}
