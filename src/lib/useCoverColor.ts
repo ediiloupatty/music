@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 export type RGB = { r: number; g: number; b: number };
 
 // Extracts a vibrant dominant colour from a cover image so the UI can tint
-// itself to match the artwork. Works because the (mock) covers are served
-// same-origin from /covers — canvas pixel reading isn't blocked by CORS.
+// itself to match the artwork (covers are served cross-origin via R2, which
+// sends the CORS headers canvas pixel reading needs).
 export function useCoverColor(coverUrl?: string): RGB | null {
   const [color, setColor] = useState<RGB | null>(null);
 
@@ -18,7 +18,14 @@ export function useCoverColor(coverUrl?: string): RGB | null {
     let cancelled = false;
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.src = coverUrl;
+    img.decoding = "async";
+    // Sample on a DISTINCT cache key so we never reuse the cache entry a plain
+    // (non-CORS) <img> of the same cover populated — that entry is opaque to the
+    // canvas and taints getImageData, which is why the tint intermittently fell
+    // back to teal (and only worked after a hard reload that happened to fetch
+    // the CORS copy first). A dedicated CORS-mode request avoids the poisoning.
+    const sep = coverUrl.includes("?") ? "&" : "?";
+    img.src = `${coverUrl}${sep}ccsample=1`;
 
     img.onload = () => {
       if (cancelled) return;

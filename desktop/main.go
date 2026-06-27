@@ -110,7 +110,17 @@ func main() {
 	updates := make(chan presence, 1)
 	go discordWorker(updates, *dynamicCover)
 
+	// webview_create() shows its window and pumps the message loop while WebView2
+	// initialises (async) — painting a blank WHITE frame for the whole init. That
+	// happens inside webview.New(), before our off-screen parking can run. So park
+	// the window the instant it appears: a watcher goroutine moves it off-screen,
+	// and the cross-thread SetWindowPos is serviced by webview's own init pump, so
+	// the white init frame is never visible.
+	stopPark := make(chan struct{})
+	go parkDuringInit(stopPark)
+
 	w := webview.New(*debug)
+	close(stopPark)
 	defer w.Destroy()
 	w.SetTitle("Zenify")
 	w.SetSize(1100, 720, webview.HintNone)

@@ -4,6 +4,7 @@ package main
 
 import (
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -20,6 +21,7 @@ var (
 	pGetWindowLong   = user32.NewProc("GetWindowLongPtrW")
 	pSetWindowLong   = user32.NewProc("SetWindowLongPtrW")
 	pCallWindowProc  = user32.NewProc("CallWindowProcW")
+	pFindWindow      = user32.NewProc("FindWindowW")
 	pGetModuleHandle = syscall.NewLazyDLL("kernel32.dll").NewProc("GetModuleHandleW")
 )
 
@@ -107,6 +109,28 @@ func setWindowIcon(hwnd uintptr) {
 func hideOffscreen(hwnd uintptr) {
 	pGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&revealRect)))
 	pSetWindowPos.Call(hwnd, 0, offscreen, offscreen, 0, 0, swpNoSize|swpNoZorder|swpNoActivate)
+}
+
+// parkDuringInit moves the webview window off-screen the moment it is created,
+// for the duration of webview.New(). The library shows + paints a blank white
+// window and then pumps the message loop while WebView2 initialises; that pump
+// services this (cross-thread) SetWindowPos, so the window is whisked off-screen
+// before the white frame is ever seen. Stops when `stop` is closed (right after
+// New() returns), after which main's own hideOffscreen keeps it parked.
+func parkDuringInit(stop <-chan struct{}) {
+	cls, _ := syscall.UTF16PtrFromString("webview")
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		h, _, _ := pFindWindow.Call(uintptr(unsafe.Pointer(cls)), 0)
+		if h != 0 {
+			pSetWindowPos.Call(h, 0, offscreen, offscreen, 0, 0, swpNoSize|swpNoZorder|swpNoActivate)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
 }
 
 func installFrameless(hwnd uintptr) {
