@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import ZenifyGlyph from "@/components/ZenifyGlyph";
 
 export default function SidebarProfile({ 
   isLoggedIn, 
@@ -32,9 +33,7 @@ export default function SidebarProfile({
           {isLoggedIn ? (
             <span className="font-bold text-white text-sm">{name?.charAt(0) || "U"}</span>
           ) : (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-            </svg>
+            <ZenifyGlyph size={20} />
           )}
           {isLoggedIn && (
             <span

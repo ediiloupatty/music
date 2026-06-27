@@ -10,8 +10,11 @@
       <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </radialGradient>
   </defs>
+  <!-- Squircle background -->
   <rect width="512" height="512" rx="120" fill="url(#zg)"/>
+  <!-- Soft top-left sheen -->
   <rect width="512" height="512" rx="120" fill="url(#zs)"/>
+  <!-- Equalizer bars -->
   <g fill="#ffffff">
     <rect x="90"  y="181" width="44" height="150" rx="22"/>
     <rect x="162" y="131" width="44" height="250" rx="22"/>

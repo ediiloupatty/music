@@ -52,3 +52,8 @@ next-env.d.ts
 /uploader/uploader
 # local audio to be uploaded — far too big for GitHub
 /uploader/download/
+
+# Golang Desktop
+/desktop/zenify-desktop.exe
+/desktop/*.exe
+/desktop/*.syso

@@ -1,0 +1,8 @@
+# Go build output
+/zenify-desktop
+/zenify-desktop.exe
+*.exe
+*.syso
+
+# local env
+.env

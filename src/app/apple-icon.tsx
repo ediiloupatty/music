@@ -3,11 +3,11 @@ import { ImageResponse } from "next/og";
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
-// White music note as a data-URI SVG (Satori renders this reliably via <img>)
+// White equalizer bars as a data-URI SVG (Satori renders this reliably via <img>)
 const note =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
-    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'><path d='M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/></svg>`
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' fill='white'><rect x='90' y='181' width='44' height='150' rx='22'/><rect x='162' y='131' width='44' height='250' rx='22'/><rect x='234' y='86' width='44' height='340' rx='22'/><rect x='306' y='146' width='44' height='220' rx='22'/><rect x='378' y='191' width='44' height='130' rx='22'/></svg>`
   );
 
 export default function AppleIcon() {

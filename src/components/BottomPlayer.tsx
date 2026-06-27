@@ -520,6 +520,33 @@ export default function BottomPlayer() {
     }
   }, [currentTrackIndex, isPlaying, tracks]);
 
+  // ── Discord Rich Presence bridge ──────────────────────────────────────────
+  // Emit a "now playing" snapshot whenever the track or play/pause state changes.
+  // In a normal browser this CustomEvent is simply unheard and costs nothing. The
+  // desktop shell (see /desktop — Go + webview) installs a listener that forwards
+  // the detail to Discord via local RPC. Cover is made absolute so the desktop can
+  // optionally hand Discord a real URL; otherwise the native side falls back to the
+  // uploaded `zenify_logo` art asset.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const audio = audioRef.current;
+    const detail = currentTrack
+      ? {
+          title: cleanTitle(currentTrack.title),
+          artist: currentTrack.artist || currentTrack.category || "",
+          album: currentTrack.album || "",
+          cover: currentTrack.cover_url
+            ? new URL(currentTrack.cover_url, window.location.origin).href
+            : "",
+          state: isPlaying ? "playing" : "paused",
+          position: audio?.currentTime || 0,
+          duration: audio?.duration || currentTrack.duration || 0,
+        }
+      : { title: "", artist: "", album: "", cover: "", state: "stopped", position: 0, duration: 0 };
+    window.dispatchEvent(new CustomEvent("zenify:nowplaying", { detail }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack?.id, isPlaying]);
+
   // remembers the level to restore after mute (seeded with the persisted volume)
   const prevVolumeRef = useRef(volume || 0.8);
 
