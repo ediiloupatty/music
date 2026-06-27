@@ -58,6 +58,7 @@ var (
 	isMaximized bool
 
 	revealRect rect // where to place the window once content is ready
+	revealed   bool // true after the first reveal; later reloads must not move/resize
 )
 
 // decorateWindow turns the window frameless (so the web draws its own title bar)
@@ -179,6 +180,15 @@ func hitTest(hwnd, lparam uintptr) uintptr {
 // centre of the current monitor and focuses it. Called from JS once the page has
 // loaded and painted.
 func winReveal(hwnd uintptr) {
+	// Only the first call (initial load) needs to un-park the window. The titlebar
+	// script re-runs winReveal() on every navigation/hard reload, but by then the
+	// window is already on-screen — re-centering it to revealRect would snap it
+	// back to the startup size (1100x720), losing any resize/maximize. So no-op.
+	if revealed {
+		return
+	}
+	revealed = true
+
 	w := revealRect.Right - revealRect.Left
 	h := revealRect.Bottom - revealRect.Top
 	if w <= 0 {

@@ -94,6 +94,9 @@ interface PlayerContextType {
   setCurrentTrackIndex: (index: number) => void;
   toggleRepeat: () => void;
   toggleShuffle: () => void;
+  // Upcoming tracks in play order (after the current one). `index` is the index
+  // into `tracks`, so a UI can jump straight there via setCurrentTrackIndex.
+  upcoming: { track: Track; index: number }[];
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -109,6 +112,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // The real index into `tracks` of the currently playing song.
   const currentTrackIndex = playOrder[position] ?? 0;
+
+  // Upcoming tracks in the current play order (respects shuffle).
+  const upcoming = playOrder
+    .slice(position + 1)
+    .map((trackIdx) => ({ track: tracks[trackIdx], index: trackIdx }))
+    .filter((u) => u.track);
 
   // Restore the last session on reload so playback stays in sync across pages /
   // refreshes. We also restore `isPlaying`; the BottomPlayer attempts to resume
@@ -262,6 +271,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setCurrentTrackIndex,
         toggleRepeat,
         toggleShuffle,
+        upcoming,
       }}
     >
       {children}

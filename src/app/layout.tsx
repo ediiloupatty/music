@@ -3,6 +3,7 @@ import { Geist } from "next/font/google";
 import "./globals.css";
 import { PlayerProvider } from "@/context/PlayerContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { ToastProvider } from "@/context/ToastContext";
 import BottomPlayer from "@/components/BottomPlayer";
 import BottomNav from "@/components/BottomNav";
 
@@ -29,11 +30,13 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col" style={{ background: "var(--bg-base)", color: "var(--text-primary)" }}>
         <ThemeProvider>
-          <PlayerProvider>
-            {children}
-            <BottomPlayer />
-            <BottomNav />
-          </PlayerProvider>
+          <ToastProvider>
+            <PlayerProvider>
+              {children}
+              <BottomPlayer />
+              <BottomNav />
+            </PlayerProvider>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

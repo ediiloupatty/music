@@ -583,9 +583,9 @@ export default function BottomPlayer() {
     applyVolume(v);
   };
 
-  // Click the speaker icon to mute (volume 0) / unmute (restore previous level).
-  const toggleMute = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  // Mute (volume 0) / unmute (restore previous level). The speaker icon and the
+  // "M" keyboard shortcut both go through this.
+  const muteToggle = () => {
     if (volume > 0) {
       prevVolumeRef.current = volume;
       applyVolume(0);
@@ -593,6 +593,62 @@ export default function BottomPlayer() {
       applyVolume(prevVolumeRef.current || 0.5);
     }
   };
+  const toggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    muteToggle();
+  };
+
+  // Keyboard shortcuts: Space = play/pause, ←/→ = seek 5s, Shift+←/→ = prev/next,
+  // ↑/↓ = volume, M = mute. Ignored while typing in a field so search still works.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.tagName === "SELECT" ||
+          el.isContentEditable)
+      ) {
+        return;
+      }
+      if (!currentTrack) return;
+      const audio = audioRef.current;
+
+      switch (e.key) {
+        case " ":
+        case "Spacebar":
+          e.preventDefault();
+          togglePlay();
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          if (e.shiftKey) playNextTrack();
+          else if (audio) audio.currentTime = Math.min(audio.duration || audio.currentTime, audio.currentTime + 5);
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          if (e.shiftKey) playPrevTrack();
+          else if (audio) audio.currentTime = Math.max(0, audio.currentTime - 5);
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          applyVolume(Math.min(1, volume + 0.05));
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          applyVolume(Math.max(0, volume - 0.05));
+          break;
+        case "m":
+        case "M":
+          muteToggle();
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack, isPlaying, volume, tracks]);
 
   const formatTime = (time: number) => {
     if (isNaN(time)) return "0:00";
@@ -882,7 +938,7 @@ export default function BottomPlayer() {
                   onClick={(e) => { e.stopPropagation(); toggleShuffle(); }}
                   className="transition-all active:scale-90 hover:scale-110"
                   style={{ color: shuffle ? accent : "#94a3b8" }}
-                  title={shuffle ? "Shuffle: on" : "Shuffle: off"}
+                  aria-label={shuffle ? "Shuffle on" : "Shuffle off"} aria-pressed={shuffle} title={shuffle ? "Shuffle: on" : "Shuffle: off"}
                 >
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
@@ -892,6 +948,7 @@ export default function BottomPlayer() {
                 {/* Prev */}
                 <button
                   onClick={(e) => { e.stopPropagation(); playPrevTrack(); }}
+                  aria-label="Previous track"
                   className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110"
                 >
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
@@ -901,7 +958,7 @@ export default function BottomPlayer() {
 
                 {/* Play / Pause */}
                 <button
-                  onClick={togglePlay}
+                  onClick={togglePlay} aria-label={isPlaying ? "Pause" : "Play"}
                   className="w-20 h-20 rounded-full text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
                   style={{ background: accentFill, boxShadow: `0 0 35px ${accentSoft}` }}
                 >
@@ -919,6 +976,7 @@ export default function BottomPlayer() {
                 {/* Next */}
                 <button
                   onClick={(e) => { e.stopPropagation(); playNextTrack(); }}
+                  aria-label="Next track"
                   className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110"
                 >
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
@@ -931,7 +989,7 @@ export default function BottomPlayer() {
                   onClick={(e) => { e.stopPropagation(); toggleRepeat(); }}
                   className="relative transition-all active:scale-90 hover:scale-110"
                   style={{ color: repeatMode !== "off" ? accent : "#94a3b8" }}
-                  title={`Repeat: ${repeatMode}`}
+                  aria-label={`Repeat ${repeatMode}`} aria-pressed={repeatMode !== "off"} title={`Repeat: ${repeatMode}`}
                 >
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
@@ -948,7 +1006,7 @@ export default function BottomPlayer() {
                   {/* Speaker doubles as a mute toggle, like the mini player */}
                   <button
                     onClick={toggleMute}
-                    title={volume === 0 ? "Unmute" : "Mute"}
+                    aria-label={volume === 0 ? "Unmute" : "Mute"} title={volume === 0 ? "Unmute" : "Mute"}
                     className="flex-shrink-0 transition-colors"
                     style={{ color: volume === 0 ? accent : "#94a3b8" }}
                   >
@@ -1187,15 +1245,15 @@ export default function BottomPlayer() {
                 onClick={(e) => { e.stopPropagation(); toggleShuffle(); }}
                 className="hover:opacity-80 transition-opacity"
                 style={{ color: shuffle ? accent : "var(--text-muted)" }}
-                title={shuffle ? "Shuffle: on" : "Shuffle: off"}
+                aria-label={shuffle ? "Shuffle on" : "Shuffle off"} aria-pressed={shuffle} title={shuffle ? "Shuffle: on" : "Shuffle: off"}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
               </button>
-              <button onClick={playPrevTrack} className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
+              <button onClick={playPrevTrack} aria-label="Previous track" className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
               </button>
               <button
-                onClick={togglePlay}
+                onClick={togglePlay} aria-label={isPlaying ? "Pause" : "Play"}
                 className="w-10 h-10 rounded-full text-white flex items-center justify-center hover:scale-105 transition-transform"
                 style={{ background: accentFill, boxShadow: `0 0 15px ${accentSoft}` }}
               >
@@ -1205,7 +1263,7 @@ export default function BottomPlayer() {
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="ml-1"><path d="M8 5v14l11-7z"/></svg>
                 )}
               </button>
-              <button onClick={() => playNextTrack()} className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
+              <button onClick={() => playNextTrack()} aria-label="Next track" className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
               </button>
               {/* Repeat */}
@@ -1213,7 +1271,7 @@ export default function BottomPlayer() {
                 onClick={(e) => { e.stopPropagation(); toggleRepeat(); }}
                 className="relative hover:opacity-80 transition-opacity"
                 style={{ color: repeatMode !== "off" ? accent : "var(--text-muted)" }}
-                title={`Repeat: ${repeatMode}`}
+                aria-label={`Repeat ${repeatMode}`} aria-pressed={repeatMode !== "off"} title={`Repeat: ${repeatMode}`}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
                 {repeatMode === "one" && (
@@ -1265,7 +1323,7 @@ export default function BottomPlayer() {
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleMute}
-                title={volume === 0 ? "Unmute" : "Mute"}
+                aria-label={volume === 0 ? "Unmute" : "Mute"} title={volume === 0 ? "Unmute" : "Mute"}
                 className="transition-colors hover:text-[var(--text-primary)]"
                 style={{ color: volume === 0 ? accent : "var(--text-muted)" }}
               >
