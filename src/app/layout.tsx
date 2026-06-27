@@ -5,6 +5,7 @@ import { PlayerProvider } from "@/context/PlayerContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import BottomPlayer from "@/components/BottomPlayer";
 import BottomNav from "@/components/BottomNav";
+import DesktopTitlebar from "@/components/DesktopTitlebar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,6 +31,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col" style={{ background: "var(--bg-base)", color: "var(--text-primary)" }}>
         <ThemeProvider>
           <PlayerProvider>
+            <DesktopTitlebar />
             {children}
             <BottomPlayer />
             <BottomNav />

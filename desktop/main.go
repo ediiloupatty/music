@@ -63,8 +63,15 @@ func main() {
 	w.SetTitle("Zenify")
 	w.SetSize(1100, 720, webview.HintNone)
 
-	// Dark title bar + embedded app icon (Windows only; no-op elsewhere).
-	decorateWindow(uintptr(w.Window()))
+	// Frameless dark window + embedded app icon (Windows only; no-op elsewhere).
+	hwnd := uintptr(w.Window())
+	decorateWindow(hwnd)
+
+	// Window controls invoked from the web titlebar (see DesktopTitlebar.tsx).
+	w.Bind("winMinimize", func() { winMinimize(hwnd) })
+	w.Bind("winToggleMaximize", func() { winToggleMaximize(hwnd) })
+	w.Bind("winDragStart", func() { winDragStart(hwnd) })
+	w.Bind("winClose", func() { w.Terminate() })
 
 	// Exposed to the page as window.zenifyPresence(detail). webview unmarshals the
 	// JS object argument straight into our struct. We hand off without blocking.
@@ -72,14 +79,11 @@ func main() {
 		send(updates, p)
 	})
 
-	// Runs before every page's own scripts, on each navigation — so the bridge
-	// survives clicking around the SPA / full reloads.
-	w.Init(`
-		window.__ZENIFY_DESKTOP__ = true;
-		window.addEventListener('zenify:nowplaying', function (e) {
-			try { window.zenifyPresence(e.detail); } catch (_) {}
-		});
-	`)
+	// Runs before every page's own scripts, on each navigation. It (1) bridges the
+	// web's now-playing event to Discord and (2) injects the custom title bar, so
+	// the desktop owns its chrome no matter which URL is loaded — the online web
+	// app needs no changes.
+	w.Init(titlebarJS)
 
 	w.Navigate(*url)
 	w.Run()
