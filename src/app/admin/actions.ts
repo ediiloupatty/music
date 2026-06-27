@@ -155,6 +155,9 @@ export async function uploadTrackAction(formData: FormData) {
             Key: coverFilename,
             Body: coverData,
             ContentType: "image/jpeg",
+            // Cover filenames are unique & never overwritten, so the bytes can
+            // be cached forever. This header rides along on the presigned GET.
+            CacheControl: "public, max-age=31536000, immutable",
           })
         );
         coverUrl = `/api/cover/${coverFilename}`;
@@ -363,6 +366,9 @@ export async function backfillMissingCoversAction(): Promise<{
             Key: filename,
             Body: coverData,
             ContentType: "image/jpeg",
+            // Cover filenames are unique & never overwritten, so the bytes can
+            // be cached forever. This header rides along on the presigned GET.
+            CacheControl: "public, max-age=31536000, immutable",
           })
         );
         const coverUrl = `/api/cover/${filename}`;
@@ -640,6 +646,7 @@ export async function compressAllCoversAction(): Promise<{ success: boolean; upd
 
         await r2Client.send(new PutObjectCommand({
           Bucket: bucketName, Key: key, Body: compressed, ContentType: "image/jpeg",
+          CacheControl: "public, max-age=31536000, immutable",
         }));
         updated++;
       } catch (e) {
