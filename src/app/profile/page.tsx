@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import Sidebar from "@/components/Sidebar";
-import { getUserFavorites, getTracksByCategory, getPlaylists, Track, Playlist } from "@/lib/cloudflare";
+import { getUserFavorites, getUserStats, getTracksByCategory, getRecentlyPlayed, getPlaylists } from "@/lib/cloudflare";
 import CompactTrackList from "@/components/CompactTrackList";
 import PlaylistGrid from "@/components/PlaylistGrid";
 
@@ -66,20 +66,26 @@ export default async function ProfilePage() {
   const userName = session.user?.name || "User";
   const userInitial = userName.charAt(0).toUpperCase();
 
-  // Fetch data
-  const userFavorites = await getUserFavorites(userEmail);
-  const allTracks: Track[] = await getTracksByCategory(null);
-  
+  // Fetch data (all realtime from D1)
+  const [userFavorites, allTracks, { joinedAt, totalPlays }, recentlyPlayed] = await Promise.all([
+    getUserFavorites(userEmail),
+    getTracksByCategory(null),
+    getUserStats(userEmail),
+    getRecentlyPlayed(4),
+  ]);
+
   // Filter and limit favorites (e.g., top 12)
   const favoriteTracks = allTracks.filter((t) => userFavorites.includes(t.id)).slice(0, 12);
 
-  // Fetch playlists and filter for the user (in our mock data, they might not have user_email, so we'll just show some for visual purposes if empty)
+  // "Joined <Month> <Year>" from the account's created_at (falls back gracefully).
+  const joinedLabel = joinedAt
+    ? new Date(joinedAt.includes("T") || joinedAt.includes(" ") ? joinedAt.replace(" ", "T") + "Z" : joinedAt)
+        .toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : null;
+
+  // The user's own playlists (realtime — no visual padding so the stat is honest).
   const allPlaylists = await getPlaylists();
-  let userPlaylists = allPlaylists.filter(p => p.user_email === userEmail);
-  if (userPlaylists.length === 0) {
-    // If no real playlists, grab a couple mock ones just so the section isn't empty visually
-    userPlaylists = allPlaylists.slice(0, 3);
-  }
+  const userPlaylists = allPlaylists.filter((p) => p.user_email === userEmail);
 
   const [c1, c2] = PALETTES[hashStr(userEmail || userName) % PALETTES.length];
 
@@ -172,8 +178,12 @@ export default async function ProfilePage() {
           
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-sm opacity-80 mb-4" style={{ color: "var(--text-muted)" }}>
              <span>{userEmail}</span>
-             <span className="w-1 h-1 rounded-full bg-current opacity-50" />
-             <span>Joined March 2024</span>
+             {joinedLabel && (
+               <>
+                 <span className="w-1 h-1 rounded-full bg-current opacity-50" />
+                 <span>Joined {joinedLabel}</span>
+               </>
+             )}
           </div>
 
           <p className="italic text-sm mb-6" style={{ color: "var(--text-muted)" }}>
@@ -183,15 +193,15 @@ export default async function ProfilePage() {
           {/* Stats Row */}
           <div className="flex items-center gap-8 md:gap-12 mt-auto pb-2">
             <div className="flex flex-col">
-              <span className="text-2xl font-bold" style={{ color: "#14b8a6" }}>12</span>
-              <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Following</span>
+              <span className="text-2xl font-bold" style={{ color: "#14b8a6" }}>{userPlaylists.length}</span>
+              <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Playlists</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-2xl font-bold" style={{ color: "#14b8a6" }}>28</span>
-              <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Followers</span>
+              <span className="text-2xl font-bold" style={{ color: "#14b8a6" }}>{allTracks.length}</span>
+              <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Tracks</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-2xl font-bold" style={{ color: "#14b8a6" }}>128</span>
+              <span className="text-2xl font-bold" style={{ color: "#14b8a6" }}>{totalPlays.toLocaleString()}</span>
               <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Total Plays</span>
             </div>
             <div className="flex flex-col">
@@ -230,7 +240,7 @@ export default async function ProfilePage() {
         {/* 2-Column Track Lists */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-14 mb-10">
           <div>
-            <CompactTrackList heading="Recently Played" tracks={favoriteTracks.slice(0, 4)} actionType="play" />
+            <CompactTrackList heading="Recently Played" tracks={recentlyPlayed} actionType="play" />
           </div>
           <div>
             <CompactTrackList heading="Favorite Tracks" tracks={favoriteTracks.slice(0, 4)} actionType="heart" />
