@@ -46,3 +46,9 @@ next-env.d.ts
 # design reference screenshots (not part of the app)
 /refrensi*.png
 /Screenshot*.png
+
+# Golang Uploader
+/uploader/uploader.exe
+/uploader/uploader
+# local audio to be uploaded — far too big for GitHub
+/uploader/download/
