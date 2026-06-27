@@ -1,27 +1,48 @@
+; Inno Setup script — builds the Zenify installer (Output\ZenifySetup.exe).
+;
+; SEBELUM compile:
+;   1) build exe produksi dulu dari CMD di folder desktop:
+;        release.bat https://music-livid-xi.vercel.app
+;   2) buka file ini di Inno Setup -> Build -> Compile (Ctrl+F9)
+;
+; Hasil: Output\ZenifySetup.exe  — itu yang dibagikan ke orang lain.
+
+#define MyAppName "Zenify"
+#define MyAppVersion "1.0.0"
+#define MyAppPublisher "Edii Loupatty"
+#define MyAppExeName "zenify-desktop.exe"
+
 [Setup]
-AppName=Zenify
-AppVersion=1.0.0
-AppPublisher=Edii Loupatty
-DefaultDirName={autopf}\Zenify
-DefaultGroupName=Zenify
+AppId={{B7E3F1C2-9A4D-4E6B-8F12-5A7C9E2D4F01}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+; Install per-user (tanpa prompt admin / UAC).
+PrivilegesRequired=lowest
+DefaultDirName={localappdata}\{#MyAppName}
+DefaultGroupName={#MyAppName}
+DisableProgramGroupPage=yes
 OutputDir=Output
 OutputBaseFilename=ZenifySetup
 SetupIconFile=logo.ico
-Compression=lzma
+Compression=lzma2
 SolidCompression=yes
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+WizardStyle=modern
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "desktopicon"; Description: "Buat shortcut di Desktop"; GroupDescription: "Shortcut tambahan:"
 
 [Files]
 Source: "zenify-desktop.exe"; DestDir: "{app}"; Flags: ignoreversion
-; Jika kamu punya file lain yang dibutuhkan saat jalan, tambahkan di sini.
 
 [Icons]
-Name: "{group}\Zenify"; Filename: "{app}\zenify-desktop.exe"
-Name: "{commondesktop}\Zenify"; Filename: "{app}\zenify-desktop.exe"; Tasks: desktopicon
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\zenify-desktop.exe"; Description: "{cm:LaunchProgram,Zenify}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Jalankan {#MyAppName}"; Flags: nowait postinstall skipifsilent

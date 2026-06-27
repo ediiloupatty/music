@@ -12,13 +12,16 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hugolgst/rich-go/client"
+	"github.com/hugolgst/rich-go/ipc"
 	webview "github.com/webview/webview_go"
 )
 
@@ -34,6 +37,45 @@ const (
 	assetPaused  = "paused"      // small badge while paused
 )
 
+// Discord activity types. The default RPC activity is 0 ("Playing", rendered as
+// a game); 2 is "Listening", which Discord renders as "Listening to Zenify" with
+// album art and a progress bar — the Spotify-style card. rich-go's payload has
+// no `type` field, so we build and send the SET_ACTIVITY frame ourselves over its
+// low-level ipc package (the handshake still goes through client.Login).
+const activityTypeListening = 2
+
+type dcFrame struct {
+	Cmd   string `json:"cmd"`
+	Args  dcArgs `json:"args"`
+	Nonce string `json:"nonce"`
+}
+type dcArgs struct {
+	Pid      int         `json:"pid"`
+	Activity *dcActivity `json:"activity"`
+}
+type dcActivity struct {
+	Type       int           `json:"type"`
+	Details    string        `json:"details,omitempty"`
+	State      string        `json:"state,omitempty"`
+	Assets     dcAssets      `json:"assets,omitempty"`
+	Timestamps *dcTimestamps `json:"timestamps,omitempty"`
+	Buttons    []dcButton    `json:"buttons,omitempty"`
+}
+type dcAssets struct {
+	LargeImage string `json:"large_image,omitempty"`
+	LargeText  string `json:"large_text,omitempty"`
+	SmallImage string `json:"small_image,omitempty"`
+	SmallText  string `json:"small_text,omitempty"`
+}
+type dcTimestamps struct {
+	Start *int64 `json:"start,omitempty"`
+	End   *int64 `json:"end,omitempty"`
+}
+type dcButton struct {
+	Label string `json:"label,omitempty"`
+	Url   string `json:"url,omitempty"`
+}
+
 // presence is the JSON shape emitted by the web page's CustomEvent detail.
 type presence struct {
 	ID       string  `json:"id"`
@@ -47,8 +89,14 @@ type presence struct {
 	AppURL   string  `json:"appUrl"`   // origin of the web app for deep-link
 }
 
+// defaultURL is the web app the desktop loads. For production builds, bake the
+// deployed URL in at compile time with:
+//   go build -ldflags "-X main.defaultURL=https://your-zenify-url"
+// so end users never need to pass -url. Falls back to localhost for dev.
+var defaultURL = "http://localhost:3000"
+
 func main() {
-	url := flag.String("url", envOr("ZENIFY_URL", "http://localhost:3000"),
+	url := flag.String("url", envOr("ZENIFY_URL", defaultURL),
 		"URL of the online Zenify web app to load")
 	dynamicCover := flag.Bool("dynamic-cover", false,
 		"pass the album cover URL to Discord instead of the static zenify_logo asset "+
@@ -140,7 +188,7 @@ func discordWorker(updates <-chan presence, dynamicCover bool) {
 		if !ensure() {
 			continue
 		}
-		if err := client.SetActivity(buildActivity(p, dynamicCover)); err != nil {
+		if err := setActivity(buildActivity(p, dynamicCover)); err != nil {
 			log.Printf("discord: SetActivity failed (%v) — will reconnect", err)
 			connected = false
 		}
@@ -150,7 +198,7 @@ func discordWorker(updates <-chan presence, dynamicCover bool) {
 // buildActivity maps a now-playing snapshot to a Discord activity. Discord
 // requires any present details/state string to be 2–128 chars; shorter values
 // are omitted rather than rejected.
-func buildActivity(p presence, _ bool) client.Activity {
+func buildActivity(p presence, _ bool) *dcActivity {
 	// Fetch a stable public cover URL from iTunes so Discord can display album
 	// art without needing a custom CDN. Falls back to the static zenify_logo asset.
 	large := assetLogo
@@ -160,10 +208,13 @@ func buildActivity(p presence, _ bool) client.Activity {
 		}
 	}
 
-	act := client.Activity{
-		Details:    clamp(p.Title),
-		LargeImage: large,
-		LargeText:  clamp(p.Album),
+	act := &dcActivity{
+		Type:    activityTypeListening,
+		Details: clamp(p.Title),
+		Assets: dcAssets{
+			LargeImage: large,
+			LargeText:  clamp(p.Album),
+		},
 	}
 	if p.Artist != "" {
 		act.State = clamp("by " + p.Artist)
@@ -171,20 +222,21 @@ func buildActivity(p presence, _ bool) client.Activity {
 
 	switch p.State {
 	case "playing":
-		act.SmallImage = assetPlaying
-		act.SmallText = "Playing"
+		act.Assets.SmallImage = assetPlaying
+		act.Assets.SmallText = "Playing"
 		// Start = now - position gives Discord an "elapsed" timer; adding End makes
-		// it a countdown with a progress bar.
+		// it a countdown with a progress bar (in milliseconds, per the RPC spec).
 		now := time.Now()
 		start := now.Add(-time.Duration(p.Position * float64(time.Second)))
-		act.Timestamps = &client.Timestamps{Start: &start}
+		startMs := start.UnixMilli()
+		act.Timestamps = &dcTimestamps{Start: &startMs}
 		if p.Duration > 0 {
-			end := start.Add(time.Duration(p.Duration * float64(time.Second)))
-			act.Timestamps.End = &end
+			endMs := start.Add(time.Duration(p.Duration * float64(time.Second))).UnixMilli()
+			act.Timestamps.End = &endMs
 		}
 	case "paused":
-		act.SmallImage = assetPaused
-		act.SmallText = "Paused"
+		act.Assets.SmallImage = assetPaused
+		act.Assets.SmallText = "Paused"
 	default: // "stopped" / empty — idle
 		if act.Details == "" {
 			act.Details = "Idle"
@@ -195,12 +247,28 @@ func buildActivity(p presence, _ bool) client.Activity {
 	// Discord requires the URL to be a real https link, so we only add it when
 	// the app is running against a deployed (https) origin.
 	if p.AppURL != "" && p.ID != "" && strings.HasPrefix(p.AppURL, "https://") {
-		act.Buttons = []*client.Button{
+		act.Buttons = []dcButton{
 			{Label: "Play on Zenify", Url: p.AppURL + "/?play=" + p.ID},
 		}
 	}
 
 	return act
+}
+
+// setActivity sends a SET_ACTIVITY frame over the (already handshaked) Discord
+// IPC socket. We send it directly instead of via client.SetActivity so we can
+// include the `type` field that rich-go's payload struct omits.
+func setActivity(act *dcActivity) error {
+	payload, err := json.Marshal(dcFrame{
+		Cmd:   "SET_ACTIVITY",
+		Args:  dcArgs{Pid: os.Getpid(), Activity: act},
+		Nonce: strconv.FormatInt(time.Now().UnixNano(), 10),
+	})
+	if err != nil {
+		return err
+	}
+	ipc.Send(1, string(payload)) // opcode 1 = FRAME
+	return nil
 }
 
 // clamp returns s only if it satisfies Discord's 2–128 char rule, else "".
