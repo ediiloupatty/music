@@ -416,6 +416,7 @@ export default function AdminPage() {
         ref={previewAudioRef}
         crossOrigin="anonymous"
         onEnded={() => { setPreviewPlaying(false); setPreviewingId(null); }}
+        onError={() => { setPreviewPlaying(false); }}
       />
 
       {/* Ambient glows */}

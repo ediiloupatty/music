@@ -23,9 +23,9 @@
   --bg-overlay:     #3B4252cc;
   
   --text-primary:   #eceff4;
-  --text-secondary: #94a3b8;
-  --text-muted:     #64748b;
-  
+  --text-secondary: #cbd5e1;
+  --text-muted:     #9aa7ba;
+
   --border-subtle:  rgba(255,255,255,0.07);
   --border-card:    rgba(255,255,255,0.10);
   
@@ -209,6 +209,42 @@
   }
   .fade-in {
     animation: fade-in 0.6s ease;
+  }
+
+  /* Queue drawer: slide in from the right with a soft fade */
+  @keyframes queue-slide-in {
+    from { opacity: 0; transform: translateX(24px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .queue-slide-in {
+    animation: queue-slide-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+    will-change: transform, opacity;
+  }
+
+  /* Backdrop behind the queue drawer */
+  @keyframes queue-backdrop-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .queue-backdrop-in {
+    animation: queue-backdrop-in 0.32s ease both;
+  }
+
+  /* Stagger the "Up next" rows in as the drawer opens */
+  @keyframes queue-item-in {
+    from { opacity: 0; transform: translateX(12px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .queue-item-in {
+    animation: queue-item-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .queue-slide-in,
+    .queue-backdrop-in,
+    .queue-item-in {
+      animation-duration: 0.01ms;
+    }
   }
 
   /* Spinning vinyl behind the hero cover */

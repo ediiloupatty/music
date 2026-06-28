@@ -15,6 +15,27 @@ function normalizeForMatch(value: string | null | undefined): string {
   return (value || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/** Reliable MIME type from extension — browsers often report empty or wrong
+ *  file.type for lossless formats like FLAC. */
+const AUDIO_MIME: Record<string, string> = {
+  ".flac": "audio/flac",
+  ".ogg": "audio/ogg",
+  ".m4a": "audio/mp4",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".aac": "audio/aac",
+  ".webm": "audio/webm",
+  ".opus": "audio/opus",
+};
+function resolveAudioMime(filename: string, browserType: string): string {
+  const dot = filename.lastIndexOf(".");
+  if (dot !== -1) {
+    const ext = filename.slice(dot).toLowerCase();
+    if (AUDIO_MIME[ext]) return AUDIO_MIME[ext];
+  }
+  return browserType || "application/octet-stream";
+}
+
 // Cover / profile art is only ever shown small, so we cap it at 800px and
 // re-encode as JPEG. This keeps stored files tiny (faster loads, fewer failures
 // over an unstable connection) while staying visually sharp. Always JPEG.
@@ -125,7 +146,7 @@ export async function uploadTrackAction(formData: FormData) {
         Bucket: bucketName,
         Key: uniqueFilename,
         Body: buffer,
-        ContentType: file.type,
+        ContentType: resolveAudioMime(file.name, file.type),
       })
     );
 

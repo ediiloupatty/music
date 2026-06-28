@@ -20,12 +20,20 @@ function MiniCover({ track }: { track: Track }) {
   );
 }
 
-function HiResDetail({ track }: { track: Track }) {
+function HiResDetail({ track, accent, coverColor }: { 
+  track: Track; 
+  accent?: string; 
+  coverColor?: { r: number; g: number; b: number }; 
+}) {
   const specs = formatAudioSpecs(track);
   if (!specs) return null;
 
   const isHiRes = (track.bit_depth && track.bit_depth >= 24) ||
     (track.sample_rate && track.sample_rate > 44100);
+
+  const accentGradient = coverColor 
+    ? `linear-gradient(135deg, rgb(${coverColor.r}, ${coverColor.g}, ${coverColor.b}), rgba(${coverColor.r}, ${coverColor.g}, ${coverColor.b}, 0.6))` 
+    : "linear-gradient(135deg, #14b8a6, #6366f1)";
 
   return (
     <div
@@ -35,17 +43,17 @@ function HiResDetail({ track }: { track: Track }) {
       <div className="flex items-center gap-2 mb-2.5">
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background: isHiRes ? "linear-gradient(135deg, #14b8a6, #6366f1)" : "var(--bg-card-hover)" }}
+          style={{ background: isHiRes ? accentGradient : "var(--bg-card-hover)" }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
             <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
           </svg>
         </div>
-        <span className="text-[10px] font-black tracking-[0.15em] uppercase" style={{ color: "var(--text-muted)" }}>
+        <span className="text-[10px] font-black tracking-[0.15em] uppercase" style={{ color: "var(--text-secondary)" }}>
           Audio Quality
         </span>
         {isHiRes && (
-          <span className="ml-auto px-2 py-0.5 rounded text-[9px] font-black tracking-wider text-white bg-gradient-to-r from-teal-400 to-indigo-500">
+          <span className="ml-auto px-2 py-0.5 rounded text-[9px] font-black tracking-wider text-white" style={{ background: accentGradient }}>
             HI-RES
           </span>
         )}
@@ -53,7 +61,7 @@ function HiResDetail({ track }: { track: Track }) {
       <div className="grid grid-cols-2 gap-2">
         {track.bit_depth && (
           <div className="rounded-lg px-2.5 py-2" style={{ background: "var(--bg-card-hover)" }}>
-            <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "var(--text-muted)" }}>
+            <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "var(--text-secondary)" }}>
               Bit Depth
             </p>
             <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
@@ -63,7 +71,7 @@ function HiResDetail({ track }: { track: Track }) {
         )}
         {track.sample_rate && (
           <div className="rounded-lg px-2.5 py-2" style={{ background: "var(--bg-card-hover)" }}>
-            <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "var(--text-muted)" }}>
+            <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "var(--text-secondary)" }}>
               Sample Rate
             </p>
             <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
@@ -73,7 +81,7 @@ function HiResDetail({ track }: { track: Track }) {
         )}
         {track.file_url && (
           <div className="rounded-lg px-2.5 py-2" style={{ background: "var(--bg-card-hover)" }}>
-            <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "var(--text-muted)" }}>
+            <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "var(--text-secondary)" }}>
               Format
             </p>
             <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
@@ -83,7 +91,7 @@ function HiResDetail({ track }: { track: Track }) {
         )}
         {track.duration && (
           <div className="rounded-lg px-2.5 py-2" style={{ background: "var(--bg-card-hover)" }}>
-            <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "var(--text-muted)" }}>
+            <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "var(--text-secondary)" }}>
               Duration
             </p>
             <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
@@ -98,7 +106,19 @@ function HiResDetail({ track }: { track: Track }) {
 
 // Slide-in "Up Next" drawer. Reads the upcoming queue from the player and lets
 // the user jump straight to any track (respects shuffle order).
-export default function QueuePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function QueuePanel({ 
+  open, 
+  onClose, 
+  accent = "var(--accent)", 
+  accentSoft = "rgba(45, 212, 191, 0.5)", 
+  coverColor = { r: 45, g: 212, b: 191 } 
+}: { 
+  open: boolean; 
+  onClose: () => void; 
+  accent?: string; 
+  accentSoft?: string; 
+  coverColor?: { r: number; g: number; b: number }; 
+}) {
   const { tracks, currentTrackIndex, upcoming, setCurrentTrackIndex } = usePlayer();
   const current = tracks[currentTrackIndex];
 
@@ -107,18 +127,24 @@ export default function QueuePanel({ open, onClose }: { open: boolean; onClose: 
   return (
     <>
       {/* Click-away backdrop */}
-      <div className="fixed inset-0 z-[150] bg-black/30" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/30 queue-backdrop-in" onClick={onClose} />
 
       <aside
         role="dialog"
         aria-label="Play queue"
-        className="fixed right-0 top-0 bottom-0 w-[360px] max-w-[88vw] z-[160] flex flex-col fade-in shadow-2xl"
-        style={{ background: "var(--bg-secondary)", borderLeft: "1px solid var(--border-card)" }}
+        className="fixed right-0 top-[76px] md:top-[88px] bottom-24 w-[360px] max-w-[88vw] z-[45] flex flex-col queue-slide-in shadow-2xl"
+        style={{
+          background: `linear-gradient(180deg, rgba(${coverColor.r}, ${coverColor.g}, ${coverColor.b}, 0.12) 0%, rgba(${coverColor.r}, ${coverColor.g}, ${coverColor.b}, 0.02) 100%), var(--bg-secondary)`,
+          borderLeft: `1px solid ${accentSoft}`
+        }}
       >
         {/* ─── Sticky Header ─── */}
         <header
-          className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0 sticky top-0 z-10"
-          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-secondary)" }}
+          className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0 sticky top-0 z-20"
+          style={{
+            borderColor: `rgba(${coverColor.r}, ${coverColor.g}, ${coverColor.b}, 0.35)`,
+            background: `linear-gradient(180deg, rgba(${coverColor.r}, ${coverColor.g}, ${coverColor.b}, 0.18) 0%, rgba(${coverColor.r}, ${coverColor.g}, ${coverColor.b}, 0.06) 100%), var(--bg-secondary)`,
+          }}
         >
           <h2 className="text-base font-black" style={{ color: "var(--text-primary)" }}>
             Queue
@@ -126,8 +152,8 @@ export default function QueuePanel({ open, onClose }: { open: boolean; onClose: 
           <button
             onClick={onClose}
             aria-label="Close queue"
-            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--bg-card-hover)]"
-            style={{ color: "var(--text-muted)" }}
+            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+            style={{ color: "var(--text-muted)", background: `rgba(${coverColor.r}, ${coverColor.g}, ${coverColor.b}, 0.1)` }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
@@ -138,48 +164,52 @@ export default function QueuePanel({ open, onClose }: { open: boolean; onClose: 
         {/* ─── Scrollable Content ─── */}
         <div className="flex-1 overflow-y-auto min-h-0">
           {current && (
-            <div className="px-3 pt-3">
-              <p className="px-2 mb-2 text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: "var(--text-muted)" }}>
+            <div className="px-3 pt-5">
+              <p className="px-2 mb-2.5 text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: accent }}>
                 Now playing
               </p>
-              <div className="flex items-center gap-3 p-2.5 rounded-xl mb-2" style={{ background: "var(--accent-glow)" }}>
+              <div className="flex items-center gap-3 p-2.5 rounded-xl mb-2" style={{ 
+                background: `rgba(${coverColor.r}, ${coverColor.g}, ${coverColor.b}, 0.15)`,
+                border: `1px solid ${accentSoft}`,
+                boxShadow: `0 0 20px rgba(${coverColor.r}, ${coverColor.g}, ${coverColor.b}, 0.2)`
+              }}>
                 <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-md">
                   <MiniCover track={current} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold text-sm truncate" style={{ color: "var(--accent)" }}>
+                  <p className="font-bold text-sm truncate" style={{ color: accent }}>
                     {cleanTitle(current.title)}
                   </p>
-                  <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+                  <p className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
                     {current.artist || current.category}
                   </p>
                   {current.duration && (
-                    <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    <p className="text-[10px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
                       {formatDuration(current.duration)}
                     </p>
                   )}
                 </div>
                 {/* Equalizer animation */}
                 <div className="flex items-end gap-[2px] h-4 flex-shrink-0 pr-1">
-                  <span className="eq-bar" style={{ animationDelay: "0s" }} />
-                  <span className="eq-bar" style={{ animationDelay: "0.2s" }} />
-                  <span className="eq-bar" style={{ animationDelay: "0.4s" }} />
+                  <span className="eq-bar" style={{ background: accent, animationDelay: "0s" }} />
+                  <span className="eq-bar" style={{ background: accent, animationDelay: "0.2s" }} />
+                  <span className="eq-bar" style={{ background: accent, animationDelay: "0.4s" }} />
                 </div>
               </div>
             </div>
           )}
 
           {/* Hi-Res Detail */}
-          {current && <HiResDetail track={current} />}
+          {current && <HiResDetail track={current} accent={accent} coverColor={coverColor} />}
 
           {/* ─── Up Next ─── */}
           <div className="px-3 pb-32">
             <div className="flex items-center justify-between px-2 mb-2 mt-1">
-              <p className="text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: "var(--text-muted)" }}>
+              <p className="text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: "var(--text-secondary)" }}>
                 Up next
               </p>
               {upcoming.length > 0 && (
-                <span className="text-[10px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                <span className="text-[10px] font-semibold" style={{ color: "var(--text-secondary)" }}>
                   {upcoming.length} track{upcoming.length !== 1 ? "s" : ""}
                 </span>
               )}
@@ -194,10 +224,10 @@ export default function QueuePanel({ open, onClose }: { open: boolean; onClose: 
                     <path d="M3 18h13v-2H3v2zm0-5h10v-2H3v2zm0-7v2h13V6H3zm18 9.59L17.42 12 21 8.41 19.59 7l-5 5 5 5L21 15.59z" />
                   </svg>
                 </div>
-                <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                   No more tracks
                 </p>
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
                   This is the last track in the queue.
                 </p>
               </div>
@@ -207,12 +237,13 @@ export default function QueuePanel({ open, onClose }: { open: boolean; onClose: 
                   <button
                     key={`${u.index}-${i}`}
                     onClick={() => setCurrentTrackIndex(u.index)}
-                    className="group flex items-center gap-3 p-2 rounded-xl text-left transition-colors hover:bg-[var(--bg-card-hover)]"
+                    className="group queue-item-in flex items-center gap-3 p-2 rounded-xl text-left transition-colors hover:bg-[var(--bg-card-hover)]"
+                    style={{ animationDelay: `${0.08 + Math.min(i, 8) * 0.04}s` }}
                   >
                     {/* Track number */}
                     <span
                       className="w-5 text-center text-[11px] font-semibold flex-shrink-0 tabular-nums"
-                      style={{ color: "var(--text-muted)" }}
+                      style={{ color: "var(--text-secondary)" }}
                     >
                       {i + 1}
                     </span>
@@ -223,12 +254,12 @@ export default function QueuePanel({ open, onClose }: { open: boolean; onClose: 
                       <p className="font-semibold text-sm truncate group-hover:text-[var(--accent)] transition-colors" style={{ color: "var(--text-primary)" }}>
                         {cleanTitle(u.track.title)}
                       </p>
-                      <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+                      <p className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
                         {u.track.artist || u.track.category}
                       </p>
                     </div>
                     {u.track.duration && (
-                      <span className="text-[10px] font-medium flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
+                      <span className="text-[10px] font-medium flex-shrink-0 tabular-nums" style={{ color: "var(--text-secondary)" }}>
                         {formatDuration(u.track.duration)}
                       </span>
                     )}

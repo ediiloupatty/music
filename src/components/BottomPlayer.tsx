@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
+import { useToast } from "@/context/ToastContext";
 import QueuePanel from "@/components/QueuePanel";
 import { useCoverColor } from "@/lib/useCoverColor";
 import { cleanTitle } from "@/lib/cleanTitle";
@@ -143,6 +144,8 @@ export default function BottomPlayer() {
     toggleRepeat,
     toggleShuffle,
   } = usePlayer();
+
+  const { showToast } = useToast();
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
@@ -508,15 +511,43 @@ export default function BottomPlayer() {
     playNextTrack(true);
   };
 
+  const errorSkipRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleAudioError = () => {
+    const audio = audioRef.current;
+    if (!audio || !currentTrack) return;
+    const err = audio.error;
+    if (!err) return;
+
+    if (err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+      showToast(`Cannot play "${cleanTitle(currentTrack.title)}" — format not supported`, "error");
+    } else if (err.code === MediaError.MEDIA_ERR_NETWORK) {
+      showToast(`Network error loading "${cleanTitle(currentTrack.title)}"`, "error");
+    } else {
+      showToast(`Failed to load "${cleanTitle(currentTrack.title)}"`, "error");
+    }
+
+    if (tracks.length > 1) {
+      const t = setTimeout(() => playNextTrack(), 800);
+      errorSkipRef.current = t;
+    } else {
+      setIsPlaying(false);
+    }
+  };
+
   useEffect(() => {
     if (isPlaying && audioRef.current) {
+      if (!audioRef.current.src) {
+        setIsPlaying(false);
+        return;
+      }
       initAudioContext();
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch(e => {
           // Browser blocked autoplay (e.g. after a fresh page load) — reflect the
           // real state so the UI doesn't show "playing" while it's actually silent.
-          if (e.name === 'NotAllowedError') {
+          if (e.name === 'NotAllowedError' || e.name === 'NotSupportedError') {
             setIsPlaying(false);
           } else if (e.name !== 'AbortError') {
             console.error("Playback failed:", e);
@@ -524,6 +555,12 @@ export default function BottomPlayer() {
         });
       }
     }
+    return () => {
+      if (errorSkipRef.current) {
+        clearTimeout(errorSkipRef.current);
+        errorSkipRef.current = null;
+      }
+    };
   }, [currentTrackIndex, isPlaying, tracks]);
 
   // ── Discord Rich Presence bridge ──────────────────────────────────────────
@@ -749,15 +786,22 @@ export default function BottomPlayer() {
     <>
       <audio
         ref={audioRef}
-        src={audioSrc}
+        src={audioSrc || undefined}
         crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
+        onError={handleAudioError}
         controlsList="nodownload"
       />
 
-      <QueuePanel open={showQueue} onClose={() => setShowQueue(false)} />
+      <QueuePanel 
+        open={showQueue} 
+        onClose={() => setShowQueue(false)} 
+        accent={accent}
+        accentSoft={accentSoft}
+        coverColor={cc}
+      />
 
       {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {/*  EXPANDED PLAYER                                                   */}
