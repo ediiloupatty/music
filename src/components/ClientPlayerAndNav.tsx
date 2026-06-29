@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
 
 // BottomPlayer and BottomNav are client-only (audio, canvas, MediaSession).
 // Loading them dynamically with ssr:false in a Client Component keeps them
@@ -16,6 +17,13 @@ const BottomNav = dynamic(() => import("@/components/BottomNav"), {
 });
 
 export default function ClientPlayerAndNav() {
+  const pathname = usePathname();
+
+  // Hide the music player and mobile navigation on the landing page and authentication pages
+  if (pathname === "/" || pathname === "/login" || pathname === "/signup") {
+    return null;
+  }
+
   return (
     <>
       <BottomPlayer />
