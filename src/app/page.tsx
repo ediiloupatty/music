@@ -8,6 +8,7 @@ import PlaylistDetail from "@/components/PlaylistDetail";
 import DynamicBackground from "@/components/DynamicBackground";
 import ZenifyGlyph from "@/components/ZenifyGlyph";
 import AutoPlayTrack from "@/components/AutoPlayTrack";
+import MainContentWrapper from "@/components/MainContentWrapper";
 
 export default async function Home({
   searchParams,
@@ -108,7 +109,7 @@ export default async function Home({
         </header>
 
         {/* SCROLLABLE CONTENT */}
-        <div className="flex-1 overflow-y-auto px-4 md:px-8 pb-48">
+        <MainContentWrapper>
           <div className="w-full">
             {playlist ? (
               <PlaylistDetail playlist={playlist} tracks={playlistTracks} />
@@ -126,7 +127,7 @@ export default async function Home({
               />
             )}
           </div>
-        </div>
+        </MainContentWrapper>
       </div>
     </div>
   );

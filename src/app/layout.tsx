@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import { PlayerProvider } from "@/context/PlayerContext";
@@ -14,8 +14,33 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("http://localhost:3000"),
   title: "Zenify - Cloud Music",
   description: "Your personal hi-res cloud music player",
+  applicationName: "Zenify",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Zenify",
+  },
+  icons: {
+    icon: "/logo.svg",
+    apple: "/logo.png",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Zenify",
+    title: "Zenify - Cloud Music",
+    description: "Your personal hi-res cloud music player",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2e3440",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

@@ -143,12 +143,13 @@ export default function BottomPlayer() {
     shuffle,
     toggleRepeat,
     toggleShuffle,
+    showQueue,
+    setShowQueue,
   } = usePlayer();
 
   const { showToast } = useToast();
 
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showQueue, setShowQueue] = useState(false);
   const [desktopOffset, setDesktopOffset] = useState(0);
   useEffect(() => {
     if ((window as { __ZENIFY_DESKTOP__?: boolean }).__ZENIFY_DESKTOP__) setDesktopOffset(32);
@@ -460,6 +461,18 @@ export default function BottomPlayer() {
           );
         } catch {}
       }
+
+      // Report playback position to the OS so the system media bar / lock
+      // screen progress stays in sync with the in-app player.
+      if ("mediaSession" in navigator && currentTrack) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: audioRef.current.duration || 0,
+            position: Math.min(audioRef.current.currentTime, audioRef.current.duration || Infinity),
+            playbackRate: 1,
+          });
+        } catch {}
+      }
     }
   };
 
@@ -589,6 +602,63 @@ export default function BottomPlayer() {
         }
       : { id: "", title: "", artist: "", album: "", cover: "", state: "stopped", position: 0, duration: 0, appUrl: "" };
     window.dispatchEvent(new CustomEvent("zenify:nowplaying", { detail }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack?.id, isPlaying]);
+
+  // ── Media Session (lock screen / notification bar / headset controls) ──────
+  // Publish now-playing metadata so the OS can display it, and route the
+  // hardware buttons (play/pause/next/prev on a headset, lock screen, or media
+  // key) back into our controls. Without this the system has no idea what's
+  // playing, so Bluetooth/lock-screen controls do nothing.
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+    const ms = navigator.mediaSession;
+
+    // Metadata + cover artwork for the system "Now Playing" surface.
+    if (currentTrack) {
+      const artwork = currentTrack.cover_url
+        ? [{ src: currentTrack.cover_url, sizes: "512x512", type: "image/jpeg" }]
+        : [];
+      ms.metadata = new MediaMetadata({
+        title: cleanTitle(currentTrack.title),
+        artist: currentTrack.artist || currentTrack.category || "",
+        album: currentTrack.album || "",
+        artwork,
+      });
+    } else {
+      ms.metadata = null;
+    }
+
+    ms.playbackState = isPlaying ? "playing" : "paused";
+
+    // Action handlers — let OS buttons drive playback directly.
+    ms.setActionHandler("play", () => {
+      if (!audioRef.current) return;
+      initAudioContext();
+      audioRef.current.play().catch(() => {});
+      setIsPlaying(true);
+    });
+    ms.setActionHandler("pause", () => {
+      if (!audioRef.current) return;
+      audioRef.current.pause();
+      setIsPlaying(false);
+    });
+    ms.setActionHandler("previoustrack", () => playPrevTrack());
+    ms.setActionHandler("nexttrack", () => playNextTrack());
+    ms.setActionHandler("seekbackward", (details) => {
+      const audio = audioRef.current;
+      if (audio) audio.currentTime = Math.max(0, audio.currentTime - (details.seekOffset || 10));
+    });
+    ms.setActionHandler("seekforward", (details) => {
+      const audio = audioRef.current;
+      if (audio) audio.currentTime = Math.min(audio.duration || audio.currentTime, audio.currentTime + (details.seekOffset || 10));
+    });
+    try {
+      ms.setActionHandler("seekto", (details) => {
+        const audio = audioRef.current;
+        if (audio && details.seekTime != null) audio.currentTime = details.seekTime;
+      });
+    } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.id, isPlaying]);
 

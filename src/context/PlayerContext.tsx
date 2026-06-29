@@ -164,6 +164,8 @@ interface PlayerContextType {
   setCurrentTrackIndex: (index: number) => void;
   toggleRepeat: () => void;
   toggleShuffle: () => void;
+  showQueue: boolean;
+  setShowQueue: React.Dispatch<React.SetStateAction<boolean>>;
   // Upcoming tracks in play order (after the current one). `index` is the index
   // into `tracks`, so a UI can jump straight there via setCurrentTrackIndex.
   upcoming: { track: Track; index: number }[];
@@ -179,6 +181,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
   const [shuffle, setShuffle] = useState(false);
+  const [showQueue, setShowQueue] = useState(false);
 
   // The real index into `tracks` of the currently playing song.
   const currentTrackIndex = playOrder[position] ?? 0;
@@ -341,6 +344,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setCurrentTrackIndex,
         toggleRepeat,
         toggleShuffle,
+        showQueue,
+        setShowQueue,
         upcoming,
       }}
     >
