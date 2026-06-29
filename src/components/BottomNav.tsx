@@ -51,14 +51,12 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="md:hidden fixed left-0 w-full z-40 flex items-center justify-around px-2 pt-2 pb-safe border-t"
+      className="md:hidden fixed bottom-0 left-0 w-full z-50 flex items-center justify-around px-3 pt-2.5 pb-4 border-t shadow-[0_-10px_35px_rgba(0,0,0,0.65)]"
       style={{
-        background: "var(--nav-bg)",
-        borderColor: "var(--border-subtle)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        bottom: hasPlayer ? "6rem" : "0",
-        transition: "bottom 0.3s ease",
+        background: "rgba(15, 23, 42, 0.85)",
+        borderColor: "rgba(255, 255, 255, 0.12)",
+        backdropFilter: "blur(30px)",
+        WebkitBackdropFilter: "blur(30px)",
       }}
     >
       {tabs.map((tab) => {
@@ -67,25 +65,25 @@ export default function BottomNav() {
           <Link
             key={tab.href}
             href={tab.href}
-            className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-all active:scale-95"
+            className="flex flex-col items-center gap-1.5 py-1.5 px-4 rounded-xl transition-all active:scale-95 group"
             style={{
               color: isActive ? "var(--accent)" : "var(--text-muted)",
               minWidth: "64px",
             }}
           >
-            <span className={`transition-transform ${isActive ? "scale-110" : ""}`}>
+            <span className={`transition-transform group-hover:scale-110 ${isActive ? "scale-115" : ""}`}>
               {tab.icon(isActive)}
             </span>
             <span
-              className="text-[10px] font-semibold tracking-wide"
+              className="text-[11px] font-bold tracking-wide transition-colors group-hover:text-white"
               style={{ color: isActive ? "var(--accent)" : "var(--text-muted)" }}
             >
               {tab.label}
             </span>
             {isActive && (
               <span
-                className="absolute bottom-0 w-8 h-0.5 rounded-full"
-                style={{ background: "var(--accent)" }}
+                className="absolute bottom-1 w-10 h-1 rounded-full shadow-md"
+                style={{ background: "var(--accent)", boxShadow: "0 0 10px var(--accent)" }}
               />
             )}
           </Link>

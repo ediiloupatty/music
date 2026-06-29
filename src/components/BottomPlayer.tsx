@@ -1358,35 +1358,43 @@ export default function BottomPlayer() {
         /*  MINI PLAYER (bottom bar)                                          */
         /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
         <div 
-          className="glass-panel fixed bottom-0 left-0 w-full h-auto min-h-[6rem] py-3 md:py-0 md:h-24 border-t-0 border-b-0 border-l-0 border-r-0 px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-50 gap-4 md:gap-0 cursor-pointer backdrop-blur-xl transition-colors shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
+          className="fixed bottom-[4.8rem] md:bottom-0 left-2 right-2 md:left-0 md:right-0 w-[calc(100%-1rem)] md:w-full h-auto min-h-[5.5rem] py-3 md:py-0 md:h-24 rounded-2xl md:rounded-none border border-white/15 md:border-t md:border-b-0 md:border-l-0 md:border-r-0 md:border-white/10 px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-40 gap-3 md:gap-0 cursor-pointer backdrop-blur-2xl transition-all shadow-[0_12px_40px_rgba(0,0,0,0.65)] hover:border-white/25"
+          style={{ background: `linear-gradient(135deg, rgba(30,35,48,0.85) 0%, rgba(15,20,30,0.85) 100%)` }}
           onContextMenu={(e) => e.preventDefault()}
           onClick={() => setIsExpanded(true)}
         >
           {/* Left: Track Info */}
           <div className="flex items-center gap-3 md:gap-4 w-full md:w-1/4 xl:w-1/5 order-1">
-            <div className="w-12 h-12 md:w-14 md:h-14 rounded-lg overflow-hidden flex-shrink-0 shadow-md">
+            <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl overflow-hidden flex-shrink-0 shadow-lg">
               <LargeCoverArt title={currentTrack.title} category={currentTrack.category} coverUrl={currentTrack.cover_url} size="sm" />
             </div>
             <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-              <div className="font-bold text-sm truncate" style={{ color: "var(--text-primary)" }}>
+              <div className="font-extrabold text-sm truncate text-white">
                 {cleanTitle(currentTrack.title)}
               </div>
               {currentTrack.artist ? (
                 <Link
                   href={`/artist/${encodeURIComponent(currentTrack.artist)}`}
                   onClick={(e) => e.stopPropagation()}
-                  className="text-xs truncate hover:underline w-fit max-w-full"
+                  className="text-xs truncate hover:underline w-fit max-w-full font-medium"
                   style={{ color: "var(--text-muted)" }}
                 >
                   {currentTrack.artist}
                 </Link>
               ) : (
-                <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{currentTrack.category}</div>
+                <div className="text-xs truncate font-medium" style={{ color: "var(--text-muted)" }}>{currentTrack.category}</div>
               )}
             </div>
-            <div className="ml-auto md:hidden">
-              <button onClick={(e) => { e.stopPropagation(); setIsExpanded(true); }} style={{ color: "var(--text-muted)" }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <div className="ml-auto md:hidden flex items-center gap-2">
+              <button onClick={(e) => { e.stopPropagation(); togglePlay(); }} aria-label={isPlaying ? "Pause" : "Play"} className="w-10 h-10 rounded-full flex items-center justify-center text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all shadow-md">
+                {isPlaying ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5"><path d="M8 5v14l11-7z"/></svg>
+                )}
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setIsExpanded(true); }} className="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-white transition-colors">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z"/>
                 </svg>
               </button>
