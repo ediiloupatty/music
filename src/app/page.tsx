@@ -7,33 +7,35 @@ export default async function LandingPage() {
 
   return (
     <div className="min-h-screen font-sans bg-[#1d2230] text-slate-100 overflow-x-hidden selection:bg-[#14b8a6] selection:text-white flex flex-col">
-      {/* ─── NAVBAR ────────────────────────────────────────────── */}
-      <header className="w-full px-8 md:px-16 py-8 max-w-[1400px] mx-auto flex items-center justify-between flex-shrink-0">
-        <Link href="/" className="flex items-center gap-3 group">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[#14b8a6] transition-transform group-hover:scale-110">
-            <path d="M12 2L12 22" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M6 7L6 17" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M18 7L18 17" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M3 10L3 14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M21 10L21 14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-          </svg>
-          <span className="font-bold text-xl tracking-wide text-white">
-            Zenify
-          </span>
-        </Link>
-
-        <nav className="hidden md:flex items-center gap-10 text-sm font-medium text-slate-400">
-          <a href="#about" className="hover:text-white transition-colors">about</a>
-          <a href="#features" className="hover:text-white transition-colors">features</a>
-          <a href="#download" className="text-white border-b-2 border-[#14b8a6] pb-1 font-semibold">download</a>
-          <a href="https://github.com/ediiloupatty/Zenify" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">github</a>
-          <Link href="/player" className="hover:text-white transition-colors font-semibold text-[#14b8a6]">open player</Link>
-        </nav>
-
-        <div className="flex md:hidden items-center">
-          <Link href="/player" className="text-sm font-bold text-[#14b8a6] hover:underline">
-            Open Player
+      {/* ─── NAVBAR (Sticky) ───────────────────────────────────── */}
+      <header className="sticky top-0 z-50 w-full px-8 md:px-16 py-6 bg-[#1d2230]/90 backdrop-blur-md border-b border-slate-800/80 transition-all flex-shrink-0">
+        <div className="max-w-[1400px] mx-auto flex items-center justify-between w-full">
+          <Link href="/" className="flex items-center gap-3 group">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[#14b8a6] transition-transform group-hover:scale-110">
+              <path d="M12 2L12 22" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+              <path d="M6 7L6 17" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+              <path d="M18 7L18 17" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+              <path d="M3 10L3 14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+              <path d="M21 10L21 14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+            <span className="font-bold text-xl tracking-wide text-white">
+              Zenify
+            </span>
           </Link>
+
+          <nav className="hidden md:flex items-center gap-10 text-sm font-medium text-slate-400">
+            <a href="#about" className="hover:text-white transition-colors">about</a>
+            <a href="#features" className="hover:text-white transition-colors">features</a>
+            <a href="#download" className="text-white border-b-2 border-[#14b8a6] pb-1 font-semibold">download</a>
+            <a href="https://github.com/ediiloupatty/Zenify" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">github</a>
+            <Link href="/player" className="hover:text-white transition-colors font-semibold text-[#14b8a6]">open player</Link>
+          </nav>
+
+          <div className="flex md:hidden items-center">
+            <Link href="/player" className="text-sm font-bold text-[#14b8a6] hover:underline">
+              Open Player
+            </Link>
+          </div>
         </div>
       </header>
 
