@@ -136,12 +136,24 @@ async function runInitializeD1Tables() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `;
+  // Per-user listening history for personalized Daily Mix generation.
+  const playHistoryTable = `
+    CREATE TABLE IF NOT EXISTS user_play_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_email TEXT NOT NULL,
+      track_id TEXT NOT NULL,
+      played_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
   await queryD1(tracksTable);
   await queryD1(favoritesTable);
   await queryD1(usersTable);
   await queryD1(playlistsTable);
   await queryD1(albumsTable);
   await queryD1(artistsTable);
+  await queryD1(playHistoryTable);
+  // Index for fast per-user history lookups (recent plays).
+  try { await queryD1(`CREATE INDEX IF NOT EXISTS idx_uph_email_played ON user_play_history (user_email, played_at DESC);`, [], { silent: true }); } catch { /* already exists */ }
 
   // SQLite has no "ADD COLUMN IF NOT EXISTS", so attempt each and ignore the
   // expected "duplicate column" failure (silenced so it doesn't spam the log).
@@ -417,14 +429,27 @@ export const getTracksByArtist = cacheFn(
 );
 
 // Increment a track's play counter and stamp last-played (best-effort).
-export async function incrementPlayCount(trackId: string): Promise<void> {
+// When userEmail is provided, also logs the play to user_play_history for
+// personalized Daily Mix generation.
+export async function incrementPlayCount(trackId: string, userEmail?: string): Promise<void> {
   if (USE_MOCK) return;
   try {
     if (!trackId) return;
-    await queryD1(
-      `UPDATE tracks SET play_count = COALESCE(play_count, 0) + 1, last_played_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [trackId]
-    );
+    const promises: Promise<any>[] = [
+      queryD1(
+        `UPDATE tracks SET play_count = COALESCE(play_count, 0) + 1, last_played_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [trackId]
+      ),
+    ];
+    if (userEmail) {
+      promises.push(
+        queryD1(
+          `INSERT INTO user_play_history (user_email, track_id) VALUES (?, ?)`,
+          [userEmail, trackId]
+        )
+      );
+    }
+    await Promise.all(promises);
   } catch (error) {
     console.error("Error incrementing play count:", error);
   }
@@ -656,3 +681,206 @@ export async function toggleFavoriteInD1(email: string, trackId: string, isFavor
   }
 }
 
+// ─── Daily Mix generation ──────────────────────────────────────────────────
+
+export type DailyMix = {
+  id: string;           // "daily-mix-1", etc.
+  title: string;        // "Daily Mix 1"
+  description: string;  // "Keshi, NIKI, and more"
+  tracks: Track[];      // 7-10 tracks
+  coverTracks: Track[]; // first 4 tracks for the 2×2 cover grid
+};
+
+// Simple deterministic hash for date-based shuffling.
+function seedHash(str: string): number {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+// Seeded pseudo-random shuffle (Fisher-Yates with deterministic seed).
+function seededShuffle<T>(arr: T[], seed: number): T[] {
+  const result = [...arr];
+  let s = seed;
+  for (let i = result.length - 1; i > 0; i--) {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    const j = s % (i + 1);
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+// Generate personalized daily mixes for a user. Mixes change every day
+// (date-seeded) but stay consistent within a single day.
+export async function getDailyMixes(
+  userEmail: string | null,
+  allTracks: Track[]
+): Promise<DailyMix[]> {
+  if (allTracks.length < 7) return []; // not enough tracks for even one mix
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  // ── Gather per-user play counts (last 30 days) ──
+  type PlayStat = { track_id: string; plays: number };
+  let userStats: PlayStat[] = [];
+  if (userEmail && !USE_MOCK) {
+    try {
+      userStats = (await queryD1(
+        `SELECT track_id, COUNT(*) AS plays
+         FROM user_play_history
+         WHERE user_email = ? AND played_at >= datetime('now', '-30 days')
+         GROUP BY track_id
+         ORDER BY plays DESC`,
+        [userEmail]
+      )) as PlayStat[];
+    } catch { /* no history yet — fall through to global fallback */ }
+  }
+
+  // Build a lookup: trackId → Track object
+  const trackMap = new Map<string, Track>();
+  for (const t of allTracks) trackMap.set(t.id, t);
+
+  // ── Artist play frequency ──
+  const artistPlays = new Map<string, number>();
+  const hasUserHistory = userStats.length > 0;
+
+  if (hasUserHistory) {
+    // Per-user: count plays per artist from user_play_history
+    for (const { track_id, plays } of userStats) {
+      const t = trackMap.get(track_id);
+      if (t?.artist) {
+        artistPlays.set(t.artist, (artistPlays.get(t.artist) || 0) + plays);
+      }
+    }
+  } else {
+    // Fallback: use global play_count from tracks table
+    for (const t of allTracks) {
+      if (t.artist && (t.play_count || 0) > 0) {
+        artistPlays.set(t.artist, (artistPlays.get(t.artist) || 0) + (t.play_count || 0));
+      }
+    }
+  }
+
+  // ── Cluster artists by genre/category ──
+  // Group: category → [artist names], sorted by play frequency
+  const artistCategory = new Map<string, string>(); // artist → primary category
+  const categoryArtists = new Map<string, string[]>();
+  for (const t of allTracks) {
+    if (!t.artist) continue;
+    if (!artistCategory.has(t.artist)) {
+      artistCategory.set(t.artist, t.genre || t.category || "other");
+    }
+  }
+
+  // Sort artists by play frequency (most played first)
+  const rankedArtists = [...artistPlays.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
+
+  // If no play data at all, rank by global track count
+  if (rankedArtists.length === 0) {
+    const artistTrackCount = new Map<string, number>();
+    for (const t of allTracks) {
+      if (t.artist) artistTrackCount.set(t.artist, (artistTrackCount.get(t.artist) || 0) + 1);
+    }
+    const sorted = [...artistTrackCount.entries()].sort((a, b) => b[1] - a[1]);
+    for (const [name] of sorted) rankedArtists.push(name);
+  }
+
+  // Group artists into clusters by their primary category
+  for (const artist of rankedArtists) {
+    const cat = artistCategory.get(artist) || "other";
+    if (!categoryArtists.has(cat)) categoryArtists.set(cat, []);
+    categoryArtists.get(cat)!.push(artist);
+  }
+
+  // ── Build mixes ──
+  // Each cluster of 1-3 artists → one mix.
+  // Distribute artists across multiple mixes: take top artists and fan them out.
+  const clusters: string[][] = [];
+  const assigned = new Set<string>();
+
+  // First pass: create clusters from ranked artists grouped by category
+  for (const [, artists] of categoryArtists) {
+    for (let i = 0; i < artists.length; i += 3) {
+      const chunk = artists.slice(i, i + 3).filter((a) => !assigned.has(a));
+      if (chunk.length > 0) {
+        clusters.push(chunk);
+        chunk.forEach((a) => assigned.add(a));
+      }
+    }
+  }
+
+  // Second pass: any remaining unassigned ranked artists into their own cluster
+  for (const artist of rankedArtists) {
+    if (!assigned.has(artist)) {
+      clusters.push([artist]);
+      assigned.add(artist);
+    }
+  }
+
+  // Cap at 6 mixes max
+  const maxMixes = Math.min(clusters.length, 6);
+  const usedTrackIds = new Set<string>();
+  const mixes: DailyMix[] = [];
+
+  for (let i = 0; i < maxMixes; i++) {
+    const clusterArtists = clusters[i];
+    const seed = seedHash(`${userEmail || "anon"}:${today}:${i}`);
+
+    // Collect all tracks from the cluster's artists
+    const pool = allTracks.filter(
+      (t) => t.artist && clusterArtists.includes(t.artist) && !usedTrackIds.has(t.id)
+    );
+
+    if (pool.length < 3) continue; // skip tiny clusters
+
+    // Deterministic shuffle, then take 7-10 tracks
+    const shuffled = seededShuffle(pool, seed);
+    const mixTracks = shuffled.slice(0, Math.min(10, Math.max(7, shuffled.length)));
+
+    for (const t of mixTracks) usedTrackIds.add(t.id);
+
+    // Description: list up to 3 artist names
+    const uniqueArtists = [...new Set(mixTracks.map((t) => t.artist).filter(Boolean))];
+    const desc =
+      uniqueArtists.length <= 2
+        ? uniqueArtists.join(" and ")
+        : `${uniqueArtists.slice(0, 2).join(", ")}, and more`;
+
+    mixes.push({
+      id: `daily-mix-${mixes.length + 1}`,
+      title: `Daily Mix ${mixes.length + 1}`,
+      description: desc,
+      tracks: mixTracks,
+      coverTracks: mixTracks.slice(0, 4),
+    });
+  }
+
+  // If we have leftover tracks and fewer than 3 mixes, add a "discovery" mix
+  // from tracks not yet used, shuffled by today's seed.
+  if (mixes.length < 3) {
+    const remaining = allTracks.filter((t) => !usedTrackIds.has(t.id));
+    if (remaining.length >= 7) {
+      const seed = seedHash(`${userEmail || "anon"}:${today}:discover`);
+      const shuffled = seededShuffle(remaining, seed);
+      const mixTracks = shuffled.slice(0, 10);
+      const uniqueArtists = [...new Set(mixTracks.map((t) => t.artist).filter(Boolean))];
+      const desc =
+        uniqueArtists.length <= 2
+          ? uniqueArtists.join(" and ")
+          : `${uniqueArtists.slice(0, 2).join(", ")}, and more`;
+      mixes.push({
+        id: `daily-mix-${mixes.length + 1}`,
+        title: `Daily Mix ${mixes.length + 1}`,
+        description: desc,
+        tracks: mixTracks,
+        coverTracks: mixTracks.slice(0, 4),
+      });
+    }
+  }
+
+  return mixes;
+}

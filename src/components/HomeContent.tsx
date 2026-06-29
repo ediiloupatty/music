@@ -12,6 +12,7 @@ import AlbumSection from "@/components/AlbumSection";
 import ArtistGrid from "@/components/ArtistGrid";
 import PlaylistGrid from "@/components/PlaylistGrid";
 import HeartButton from "@/components/HeartButton";
+import DailyMixSection from "@/components/DailyMixSection";
 import { hashString, formatDuration, PALETTES } from "@/lib/utils";
 import CoverImage from "@/components/CoverImage";
 
@@ -82,8 +83,42 @@ export default function HomeContent({
 
   // Mount the search bar into the top-bar slot in page.tsx (top-center),
   // while keeping the filter state here so results drive the track list.
+  // Uses a MutationObserver + retry loop to handle the race between the
+  // server-rendered slot and client hydration / navigation timing.
   useEffect(() => {
-    setSearchSlot(document.getElementById("search-header-slot"));
+    const find = () => document.getElementById("search-header-slot");
+    const el = find();
+    if (el) {
+      setSearchSlot(el);
+      return;
+    }
+    // Element not available yet — watch the DOM until it appears.
+    let raf: number;
+    const observer = new MutationObserver(() => {
+      const found = find();
+      if (found) {
+        setSearchSlot(found);
+        observer.disconnect();
+        cancelAnimationFrame(raf);
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    // Safety: also poll via rAF in case mutations fire before the observer
+    // is connected (extremely unlikely but costs nothing).
+    const poll = () => {
+      const found = find();
+      if (found) {
+        setSearchSlot(found);
+        observer.disconnect();
+        return;
+      }
+      raf = requestAnimationFrame(poll);
+    };
+    raf = requestAnimationFrame(poll);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
   const isSearch = filteredTracks !== null;
@@ -108,12 +143,6 @@ export default function HomeContent({
     // fallback to the library so the column never renders empty.
     const recentBase = recentlyPlayed.length ? recentlyPlayed : tracks;
     const recentList = recentBase.filter((t) => t.id !== featured?.id).slice(0, 5);
-
-    // "New Releases" when we actually have fresh tracks; otherwise a generic
-    // slice of the library (kept titled "Songs" so the heading stays honest).
-    const hasNew = newTracks.length > 0;
-    const songs = (hasNew ? newTracks : tracks).slice(0, 7);
-    const songsHeading = hasNew ? "New Releases" : "Songs";
 
     const isFeaturedPlaying =
       !!featured && !!playerCurrent && playerCurrent.id === featured.id && isPlaying;
@@ -290,96 +319,8 @@ export default function HomeContent({
             </div>
           )}
 
-          {/* ─── SONGS TABLE ─────────────────────────────────────────── */}
-          {songs.length > 0 && (
-            <section className="mb-12">
-              <SectionHeading title={songsHeading} href="/songs" />
-              {/* Column header */}
-              <div
-                className="hidden md:flex items-center gap-4 px-3 pb-2 mb-1 border-b text-[10px] font-bold tracking-wider uppercase"
-                style={{ color: "var(--text-muted)", borderColor: "var(--border-subtle)" }}
-              >
-                <span className="w-5 text-center flex-shrink-0">#</span>
-                <span className="w-11 flex-shrink-0" />
-                <span className="flex-1 min-w-0">Title</span>
-                <span className="w-40 lg:w-48 flex-shrink-0">Artist</span>
-                <span className="w-40 lg:w-48 flex-shrink-0">Album</span>
-                <span className="w-12 text-right flex-shrink-0">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="inline-block">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
-                  </svg>
-                </span>
-                <span className="w-16 flex-shrink-0" />
-              </div>
-
-              <div className="flex flex-col">
-                {songs.map((t, i) => {
-                  const isCurrent = playerCurrent?.id === t.id;
-                  return (
-                    <div
-                      key={t.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => playTrack(songs, i)}
-                      onKeyDown={(e) => e.key === "Enter" && playTrack(songs, i)}
-                      className="track-row flex items-center gap-4 px-3 py-2.5 rounded-xl cursor-pointer group"
-                      style={isCurrent ? { background: "var(--accent-glow)" } : undefined}
-                    >
-                      {/* Index / play */}
-                      <span className="w-5 flex items-center justify-center flex-shrink-0">
-                        <span className="text-xs font-mono group-hover:hidden" style={{ color: "var(--text-muted)" }}>{i + 1}</span>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="hidden group-hover:block" style={{ color: "var(--accent)" }}><path d="M8 5v14l11-7z" /></svg>
-                      </span>
-                      {/* Cover */}
-                      <div className="w-11 h-11 rounded-md overflow-hidden flex-shrink-0">
-                        <Cover track={t} />
-                      </div>
-                      {/* Title */}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm truncate" style={{ color: isCurrent ? "var(--accent)" : "var(--text-primary)" }}>
-                          {cleanTitle(t.title)}
-                        </p>
-                        <p className="text-xs truncate md:hidden" style={{ color: "var(--text-muted)" }}>{t.artist || t.category}</p>
-                      </div>
-                      {/* Artist */}
-                      <div className="hidden md:block w-40 lg:w-48 flex-shrink-0 min-w-0">
-                        {t.artist ? (
-                          <Link
-                            href={`/artist/${encodeURIComponent(t.artist)}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-sm truncate block hover:underline"
-                            style={{ color: "var(--text-secondary)" }}
-                          >
-                            {t.artist}
-                          </Link>
-                        ) : (
-                          <span className="text-sm truncate block" style={{ color: "var(--text-secondary)" }}>{t.category}</span>
-                        )}
-                      </div>
-                      {/* Album */}
-                      <span className="hidden md:block w-40 lg:w-48 flex-shrink-0 truncate text-sm" style={{ color: "var(--text-muted)" }}>
-                        {t.album || "—"}
-                      </span>
-                      {/* Duration */}
-                      <span className="w-12 text-right text-xs font-mono tabular-nums flex-shrink-0" style={{ color: "var(--text-muted)" }}>
-                        {formatDuration(t.duration)}
-                      </span>
-                      {/* Actions */}
-                      <div className="flex items-center gap-1 w-10 md:w-16 flex-shrink-0 justify-end" onClick={(e) => e.stopPropagation()}>
-                        <HeartButton
-                          trackId={t.id}
-                          initialIsFavorited={userFavorites.includes(t.id)}
-                          isLoggedIn={isLoggedIn}
-                          size={16}
-                          className="w-7 h-7 rounded-full hover:bg-[var(--bg-card-hover)]"
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+          {/* ─── DAILY MIX ────────────────────────────────────────── */}
+          <DailyMixSection />
 
           {/* ─── ALBUMS (horizontal) ─────────────────────────────────── */}
           <AlbumSection currentAlbum={null} heading="Albums" limit={7} fillRow viewAllHref="/albums" />

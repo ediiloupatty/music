@@ -40,14 +40,14 @@ export default function ArtistGrid({
         )}
       </div>
 
-      <div className={wrap ? "flex flex-wrap gap-5" : "flex overflow-x-auto gap-5 pb-4 snap-x snap-mandatory"}>
+      <div className={wrap ? "flex flex-wrap gap-5" : "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-5"}>
         {shown.map((artist) => {
           const [c1, c2] = PALETTES[hashString(artist.name) % PALETTES.length];
           return (
             <Link
               key={artist.name}
               href={`/artist/${encodeURIComponent(artist.name)}`}
-              className="flex-shrink-0 w-[140px] snap-start flex flex-col items-center group cursor-pointer"
+              className="flex flex-col items-center group cursor-pointer"
             >
               <div className="relative w-full aspect-square rounded-full overflow-hidden mb-3 shadow-lg group-hover:shadow-xl transition-shadow" style={{ border: "1px solid var(--border-subtle)" }}>
                 {artist.image_url ? (

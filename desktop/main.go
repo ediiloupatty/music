@@ -138,7 +138,10 @@ func main() {
 	w.Bind("winMinimize", func() { winMinimize(hwnd) })
 	w.Bind("winToggleMaximize", func() { winToggleMaximize(hwnd) })
 	w.Bind("winDragStart", func() { winDragStart(hwnd) })
-	w.Bind("winClose", func() { w.Terminate() })
+	w.Bind("winClose", func() {
+		saveWindowState(hwnd)
+		w.Terminate()
+	})
 
 	// Exposed to the page as window.zenifyPresence(detail). webview unmarshals the
 	// JS object argument straight into our struct. We hand off without blocking.
