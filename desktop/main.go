@@ -39,11 +39,11 @@ const (
 )
 
 // Discord activity types. The default RPC activity is 0 ("Playing", rendered as
-// a game); 2 is "Listening", which Discord renders as "Listening to Zenify" with
-// album art and a progress bar — the Spotify-style card. rich-go's payload has
-// no `type` field, so we build and send the SET_ACTIVITY frame ourselves over its
-// low-level ipc package (the handshake still goes through client.Login).
-const activityTypeListening = 2
+// a game); 2 is "Listening", which Discord renders as "Listening to Zenify".
+// By setting this to 0 ("Playing"), Discord treats Zenify as a primary app/game,
+// which forces Discord to permanently record it in the user's Activity History /
+// Recent Activity feed even after playback has stopped.
+const activityTypeListening = 0
 
 type dcFrame struct {
 	Cmd   string `json:"cmd"`
