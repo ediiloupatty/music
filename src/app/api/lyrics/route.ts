@@ -31,6 +31,14 @@ export async function GET(request: Request) {
       });
     }
 
+    const plainResult = Array.isArray(data) ? data.find((item: any) => item.plainLyrics && item.plainLyrics.length > 0) : null;
+
+    if (plainResult) {
+      return NextResponse.json({ syncedLyrics: plainResult.plainLyrics }, {
+        headers: { "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800" },
+      });
+    }
+
     return NextResponse.json({ syncedLyrics: null }, {
       headers: { "Cache-Control": "public, max-age=3600" },
     });

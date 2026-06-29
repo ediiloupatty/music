@@ -195,7 +195,7 @@ export default function BottomPlayer() {
     const hasTimestamps = currentTrack.lyrics && /\[\d{2}:\d{2}\.\d{2,3}\]/.test(currentTrack.lyrics);
     if (hasTimestamps) return;
 
-    const query = `${currentTrack.artist || ''} ${currentTrack.title}`.trim();
+    const query = `${currentTrack.artist || ''} ${cleanTitle(currentTrack.title)}`.trim();
     if (!query) return;
 
     // AbortController cancels in-flight request if track changes before it resolves
@@ -1412,10 +1412,10 @@ export default function BottomPlayer() {
                           );
                         })}
                       </div>
-                    ) : currentTrack.lyrics ? (
+                    ) : (externalLyrics || currentTrack.lyrics) ? (
                       /* Plain-text lyrics (no timestamps to sync against) */
                       <div className="text-sm font-semibold leading-relaxed text-white/70 whitespace-pre-wrap pb-32">
-                        {currentTrack.lyrics}
+                        {externalLyrics || currentTrack.lyrics}
                       </div>
                     ) : isFetchingLyrics ? (
                       /* Still searching online for synced lyrics */
