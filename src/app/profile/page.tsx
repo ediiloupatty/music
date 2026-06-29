@@ -6,6 +6,7 @@ import CompactTrackList from "@/components/CompactTrackList";
 import PlaylistGrid from "@/components/PlaylistGrid";
 import QueueAwareMain from "@/components/QueueAwareMain";
 import { hashString, PALETTES } from "@/lib/utils";
+import TopHeader from "@/components/TopHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -85,22 +86,10 @@ export default async function ProfilePage() {
 
       {/* ─── MAIN AREA ────────────────────────────────────────────── */}
       <QueueAwareMain className="relative z-10 flex-1 flex flex-col overflow-hidden">
+        <TopHeader />
         <div className="flex-1 overflow-y-auto pb-44" style={{ background: "var(--bg-base)" }}>
-          {/* ── Back button ── */}
-      <div className="absolute top-5 left-5 z-30 md:hidden">
-        <Link
-          href="/player"
-          className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-          style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(10px)" }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-          </svg>
-        </Link>
-      </div>
-
       {/* ── Top Right Actions ── */}
-      <div className="absolute top-6 right-6 z-30 flex items-center gap-3">
+      <div className="absolute top-24 right-6 z-30 flex items-center gap-3">
         <button
           className="flex items-center gap-2 px-4 py-2 rounded-full border transition-colors hover:bg-white/10"
           style={{ borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}

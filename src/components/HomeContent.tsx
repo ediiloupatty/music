@@ -202,7 +202,7 @@ function CuratedHeroAndSongs({
 
           {/* Quick Access: Liked Songs shortcut + recently played */}
           <div className="w-full order-3 xl:max-w-[460px] xl:justify-self-end">
-            <SectionHeading title="Recently Played" href="/songs" />
+            <SectionHeading title="Recently Played" href="/recently-played" />
             {/* Liked Songs quick-access tile */}
             <Link
               href="/favorites"

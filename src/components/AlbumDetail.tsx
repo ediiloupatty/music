@@ -113,20 +113,7 @@ export default function AlbumDetail({
 
   return (
     <div className="flex-1 overflow-y-auto relative">
-      {/* Back */}
-      <div className="absolute top-5 left-5 z-30 md:hidden">
-        <Link
-          href="/player"
-          className="w-10 h-10 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-          style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(10px)", border: "1px solid rgba(255,255,255,0.12)" }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-          </svg>
-        </Link>
-      </div>
-
-      <div className="relative z-10 px-5 sm:px-8 md:px-12 pt-20 pb-44">
+      <div className="relative z-10 px-5 sm:px-8 md:px-12 pt-10 pb-44">
         {/* ── Header: cover + info ── */}
         <div className="flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-10">
           {/* Cover */}

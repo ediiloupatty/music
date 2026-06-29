@@ -10,6 +10,7 @@ import ArtistView from "@/components/ArtistView";
 import Sidebar from "@/components/Sidebar";
 import DynamicBackground from "@/components/DynamicBackground";
 import QueueAwareMain from "@/components/QueueAwareMain";
+import TopHeader from "@/components/TopHeader";
 import { hashString, PALETTES } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -84,6 +85,7 @@ export default async function ArtistPage({
 
       {/* ── MAIN AREA ── */}
       <QueueAwareMain className="relative z-10 flex-1 flex flex-col overflow-hidden">
+        <TopHeader />
         <ArtistView
           name={name}
           info={info}

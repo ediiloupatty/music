@@ -32,27 +32,12 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col" style={{ color: "var(--text-primary)" }}>
-      {/* Header */}
-      <header
-        className="flex items-center gap-4 px-5 pt-6 pb-4 border-b"
-        style={{ borderColor: "var(--border-subtle)" }}
-      >
-        <Link
-          href="/player"
-          className="w-9 h-9 rounded-full flex md:hidden items-center justify-center transition-all active:scale-95"
-          style={{ background: "var(--bg-card)", color: "var(--text-secondary)" }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-          </svg>
-        </Link>
-        <h1 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
-          Settings
-        </h1>
-      </header>
-
       {/* Content */}
       <div className="flex-1 px-5 py-6 pb-48 max-w-lg mx-auto w-full flex flex-col gap-6">
+
+        <h1 className="text-2xl font-bold mb-2" style={{ color: "var(--text-primary)" }}>
+          Settings
+        </h1>
 
         {/* ── Account & Profile Section ── */}
         <section>

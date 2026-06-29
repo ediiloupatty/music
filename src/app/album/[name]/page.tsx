@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import DynamicBackground from "@/components/DynamicBackground";
 import AlbumDetail from "@/components/AlbumDetail";
 import QueueAwareMain from "@/components/QueueAwareMain";
+import TopHeader from "@/components/TopHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,7 @@ export default async function AlbumPage({
       <Sidebar />
 
       <QueueAwareMain className="relative z-10 flex-1 flex flex-col overflow-hidden">
+        <TopHeader />
         <AlbumDetail
           name={name}
           tracks={tracks}

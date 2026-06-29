@@ -62,32 +62,8 @@ export default function ArtistView({
         </div>
       )}
 
-      {/* ── Top bar: back + queue ── */}
-      <div className="absolute top-5 left-5 z-30 md:hidden">
-        <Link
-          href="/player"
-          className="w-10 h-10 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-          style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(10px)", border: "1px solid rgba(255,255,255,0.12)" }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-          </svg>
-        </Link>
-      </div>
-      <div className="absolute top-5 right-5 z-30">
-        <button
-          className="w-10 h-10 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-          style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(10px)", border: "1px solid rgba(255,255,255,0.12)" }}
-          title="Queue"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3 18h13v-2H3v2zm0-5h10v-2H3v2zm0-7v2h13V6H3zm18 9.59L17.42 12 21 8.41 19.59 7l-5 5 5 5L21 15.59z" />
-          </svg>
-        </button>
-      </div>
-
       {/* ── Content grid ── */}
-      <div className="relative z-10 grid grid-cols-1 lg:grid-cols-[300px_1fr] xl:grid-cols-[340px_1fr] gap-x-8 xl:gap-x-12 gap-y-10 px-5 sm:px-8 md:px-14 pt-20 pb-44 min-h-screen">
+      <div className="relative z-10 grid grid-cols-1 lg:grid-cols-[300px_1fr] xl:grid-cols-[340px_1fr] gap-x-8 xl:gap-x-12 gap-y-10 px-5 sm:px-8 md:px-14 pt-10 pb-44 min-h-screen">
 
         {/* (1,1) — CD avatar */}
         <div className="flex justify-center lg:justify-start">
