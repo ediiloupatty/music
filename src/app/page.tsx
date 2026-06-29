@@ -72,7 +72,7 @@ export default async function LandingPage() {
         <div className="w-16 h-[2px] bg-slate-500/60 mb-10" />
 
         <p className="text-xl text-slate-300 leading-relaxed mb-12 font-normal max-w-2xl">
-          Zenify is a lightweight desktop music player that helps you organize, play, and enjoy your music — beautifully.
+          Zenify is a lightweight desktop music player that helps you organize, play, and enjoy your music beautifully.
         </p>
 
         <div id="download">

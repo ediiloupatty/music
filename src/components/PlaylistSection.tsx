@@ -292,7 +292,7 @@ export default function PlaylistSection({
             </svg>
             <span className="text-sm">
               {isLoggedIn
-                ? 'No playlists yet — click "New Playlist" to create one.'
+                ? 'No playlists yet. Click "New Playlist" to create one.'
                 : "Sign in to create playlists."}
             </span>
           </div>

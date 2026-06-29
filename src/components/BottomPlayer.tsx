@@ -571,7 +571,7 @@ export default function BottomPlayer() {
     if (!err) return;
 
     if (err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-      showToast(`Cannot play "${cleanTitle(currentTrack.title)}" — format not supported`, "error");
+      showToast(`Cannot play "${cleanTitle(currentTrack.title)}": format not supported`, "error");
     } else if (err.code === MediaError.MEDIA_ERR_NETWORK) {
       showToast(`Network error loading "${cleanTitle(currentTrack.title)}"`, "error");
     } else {
@@ -1321,7 +1321,7 @@ export default function BottomPlayer() {
                         )}
                       </h3>
                       {parsedLyrics && (
-                        <div className="flex items-center gap-1" title="Sync offset — shift lyrics earlier or later to match audio">
+                        <div className="flex items-center gap-1" title="Sync offset: shift lyrics earlier or later to match audio">
                           <button
                             onClick={() => adjustOffset(-0.5)}
                             className="w-6 h-6 rounded-lg text-slate-300 hover:text-white transition-all flex items-center justify-center active:scale-90"
