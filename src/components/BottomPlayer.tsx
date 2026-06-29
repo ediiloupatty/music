@@ -192,8 +192,9 @@ export default function BottomPlayer() {
 
     if (!currentTrack) return;
 
-    const hasTimestamps = currentTrack.lyrics && /\[\d{2}:\d{2}\.\d{2,3}\]/.test(currentTrack.lyrics);
-    if (hasTimestamps) return;
+    // Jika lirik sudah ada di database lokal (baik tersinkronisasi maupun teks biasa),
+    // gunakan lirik dari database dan jangan mencari ke API eksternal.
+    if (currentTrack.lyrics && currentTrack.lyrics.trim().length > 0) return;
 
     const cleanedTitle = cleanTitle(currentTrack.title);
     if (!cleanedTitle) return;
@@ -214,10 +215,10 @@ export default function BottomPlayer() {
   }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.lyrics]);
 
   const parsedLyrics = useMemo(() => {
-    const sourceLyrics = externalLyrics || currentTrack?.lyrics;
+    const sourceLyrics = currentTrack?.lyrics || externalLyrics;
     if (!sourceLyrics) return null;
     return parseLrc(sourceLyrics);
-  }, [externalLyrics, currentTrack?.lyrics]);
+  }, [currentTrack?.lyrics, externalLyrics]);
 
   // Driven by RAF (not timeupdate) for zero-latency sync
   const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
@@ -1414,10 +1415,10 @@ export default function BottomPlayer() {
                           );
                         })}
                       </div>
-                    ) : (externalLyrics || currentTrack.lyrics) ? (
+                    ) : (currentTrack.lyrics || externalLyrics) ? (
                       /* Plain-text lyrics (no timestamps to sync against) */
                       <div className="text-sm font-semibold leading-relaxed text-white/70 whitespace-pre-wrap pb-32">
-                        {externalLyrics || currentTrack.lyrics}
+                        {currentTrack.lyrics || externalLyrics}
                       </div>
                     ) : isFetchingLyrics ? (
                       /* Still searching online for synced lyrics */
