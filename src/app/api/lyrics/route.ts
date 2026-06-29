@@ -12,99 +12,158 @@ export const maxDuration = 45;
 // majority while still bailing on a genuinely hung request.
 const LRCLIB_TIMEOUT_MS = 12000;
 
+const HEADERS = {
+  "User-Agent": "Zenify Cloud Player (https://github.com/ediiloupatty/Zenify)",
+};
+
+const HIT_CACHE = "public, max-age=86400, stale-while-revalidate=604800";
+const MISS_CACHE = "no-store, no-cache, must-revalidate, proxy-revalidate";
+
+type LrcItem = {
+  trackName?: string;
+  artistName?: string;
+  duration?: number;
+  instrumental?: boolean;
+  plainLyrics?: string;
+  syncedLyrics?: string;
+};
+
+type Query = { title: string; artist: string; duration: number };
+
+// Normalize for comparison: lowercase, strip diacritics + punctuation, collapse
+// whitespace. So "Café (Remastered)" and "cafe remastered" compare equal.
+function norm(s: string | undefined): string {
+  return (s || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Decide whether a search result is plausibly the SAME song as the query.
+// This is the guard that stops lrclib's fuzzy search from returning a totally
+// different track (e.g. searching "Hello" and getting "Ghost Riders in the Sky").
+function accept(item: LrcItem, q: Query): boolean {
+  if (item.instrumental) return false;
+  const t = norm(item.trackName);
+  const a = norm(item.artistName);
+  const qt = norm(q.title);
+  const qa = norm(q.artist);
+
+  const titleExact = !!qt && t === qt;
+  const titleRel = !!qt && (t.includes(qt) || qt.includes(t));
+  const artistExact = !!qa && a === qa;
+  const artistRel = !!qa && (a.includes(qa) || qa.includes(a));
+
+  const durKnown = q.duration > 0 && (item.duration ?? 0) > 0;
+  const durDiff = durKnown ? Math.abs((item.duration as number) - q.duration) : Infinity;
+
+  // Duration is known and clearly a different length -> different song/version.
+  if (durKnown && durDiff > 8) return false;
+  // Near-identical length + the title is at least related -> strong match.
+  if (durKnown && durDiff <= 3 && titleRel) return true;
+  // No decisive duration signal: require real textual agreement.
+  return titleExact || (titleRel && (artistExact || artistRel));
+}
+
+// Rank accepted candidates so we pick the closest, preferring synced lyrics.
+function score(item: LrcItem, q: Query): number {
+  const t = norm(item.trackName);
+  const a = norm(item.artistName);
+  const qt = norm(q.title);
+  const qa = norm(q.artist);
+
+  let s = 0;
+  if (t === qt) s += 5;
+  else if (t.includes(qt) || qt.includes(t)) s += 2;
+  if (qa && a === qa) s += 3;
+  else if (qa && (a.includes(qa) || qa.includes(a))) s += 1;
+  if (q.duration > 0 && (item.duration ?? 0) > 0) {
+    s += Math.max(0, 4 - Math.abs((item.duration as number) - q.duration));
+  }
+  if (item.syncedLyrics) s += 2;
+  return s;
+}
+
+// Choose the best lyrics string (synced preferred) from a search response, or
+// null if nothing clears the accuracy guard — better no lyrics than wrong ones.
+function pickBest(results: unknown, q: Query): string | null {
+  if (!Array.isArray(results)) return null;
+  const cands = (results as LrcItem[]).filter((r) => accept(r, q));
+  if (cands.length === 0) return null;
+  cands.sort((x, y) => score(y, q) - score(x, q));
+
+  if (cands[0].syncedLyrics) return cands[0].syncedLyrics;
+  const synced = cands.find((c) => c.syncedLyrics && c.syncedLyrics.length > 0);
+  if (synced?.syncedLyrics) return synced.syncedLyrics;
+  return cands[0].plainLyrics || null;
+}
+
+async function lrclibFetch(url: string): Promise<unknown | null> {
+  const res = await fetch(url, {
+    headers: HEADERS,
+    signal: AbortSignal.timeout(LRCLIB_TIMEOUT_MS),
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+function hit(lyrics: string) {
+  return NextResponse.json({ syncedLyrics: lyrics }, { headers: { "Cache-Control": HIT_CACHE } });
+}
+function miss(status = 200) {
+  return NextResponse.json({ syncedLyrics: null }, { status, headers: { "Cache-Control": MISS_CACHE } });
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q") || "";
   const artist = searchParams.get("artist") || "";
   const title = searchParams.get("title") || "";
+  const duration = Math.round(Number(searchParams.get("duration")) || 0);
 
   const effectiveTitle = title || q;
   if (!effectiveTitle) {
     return NextResponse.json({ error: "Missing query or title" }, { status: 400 });
   }
 
-  const headers = {
-    "User-Agent": "Zenify Cloud Player (https://github.com/ediiloupatty/Zenify)"
-  };
+  const query: Query = { title: effectiveTitle, artist, duration };
 
   try {
-    // 1. Try exact match using /api/get if both artist and title are provided
+    // 1. Exact match via /api/get. Passing duration makes lrclib return the
+    //    version that actually matches this track's length, which is the single
+    //    biggest accuracy win. If it 404s, the search tiers below recover it.
     if (artist && title) {
-      const getRes = await fetch(`https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`, {
-        headers,
-        signal: AbortSignal.timeout(LRCLIB_TIMEOUT_MS),
-        cache: 'no-store'
-      });
-      if (getRes.ok) {
-        const data = await getRes.json();
-        if (data && (data.syncedLyrics || data.plainLyrics)) {
-          return NextResponse.json({ syncedLyrics: data.syncedLyrics || data.plainLyrics }, {
-            headers: { "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800" },
-          });
-        }
-      }
+      const params = new URLSearchParams({ artist_name: artist, track_name: title });
+      if (duration > 0) params.set("duration", String(duration));
+      const data = (await lrclibFetch(`https://lrclib.net/api/get?${params}`)) as LrcItem | null;
+      const lyrics = data?.syncedLyrics || data?.plainLyrics;
+      if (lyrics) return hit(lyrics);
     }
 
-    // 2. Try search using artist + title (or q)
+    // 2. Search by artist + title, then filter/rank by duration + name match.
     const searchQuery = artist ? `${artist} ${title}` : effectiveTitle;
-    const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(searchQuery)}`, {
-      headers,
-      signal: AbortSignal.timeout(LRCLIB_TIMEOUT_MS),
-      cache: 'no-store'
-    });
+    const tier2 = pickBest(
+      await lrclibFetch(`https://lrclib.net/api/search?q=${encodeURIComponent(searchQuery)}`),
+      query
+    );
+    if (tier2) return hit(tier2);
 
-    if (searchRes.ok) {
-      const data = await searchRes.json();
-      if (Array.isArray(data) && data.length > 0) {
-        const syncedResult = data.find((item: any) => item.syncedLyrics && item.syncedLyrics.length > 0);
-        if (syncedResult) {
-          return NextResponse.json({ syncedLyrics: syncedResult.syncedLyrics }, {
-            headers: { "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800" },
-          });
-        }
-        const plainResult = data.find((item: any) => item.plainLyrics && item.plainLyrics.length > 0);
-        if (plainResult) {
-          return NextResponse.json({ syncedLyrics: plainResult.plainLyrics }, {
-            headers: { "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800" },
-          });
-        }
-      }
-    }
-
-    // 3. Fallback: Try search using ONLY the title (in case artist string caused a mismatch)
+    // 3. Last resort: search by title only (artist string may be the culprit).
+    //    The accuracy guard still applies, so a wrong-song hit is rejected.
     if (artist) {
-      const titleRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(title)}`, {
-        headers,
-        signal: AbortSignal.timeout(LRCLIB_TIMEOUT_MS),
-        cache: 'no-store'
-      });
-      if (titleRes.ok) {
-        const data = await titleRes.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const syncedResult = data.find((item: any) => item.syncedLyrics && item.syncedLyrics.length > 0);
-          if (syncedResult) {
-            return NextResponse.json({ syncedLyrics: syncedResult.syncedLyrics }, {
-              headers: { "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800" },
-            });
-          }
-          const plainResult = data.find((item: any) => item.plainLyrics && item.plainLyrics.length > 0);
-          if (plainResult) {
-            return NextResponse.json({ syncedLyrics: plainResult.plainLyrics }, {
-              headers: { "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800" },
-            });
-          }
-        }
-      }
+      const tier3 = pickBest(
+        await lrclibFetch(`https://lrclib.net/api/search?q=${encodeURIComponent(title)}`),
+        query
+      );
+      if (tier3) return hit(tier3);
     }
 
-    return NextResponse.json({ syncedLyrics: null }, {
-      headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" },
-    });
+    return miss();
   } catch (error) {
     console.error("Error fetching lyrics:", error);
-    return NextResponse.json({ syncedLyrics: null }, {
-      status: 200,
-      headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" },
-    });
+    return miss();
   }
 }

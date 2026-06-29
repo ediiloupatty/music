@@ -202,7 +202,10 @@ export default function BottomPlayer() {
     const controller = new AbortController();
     setIsFetchingLyrics(true);
 
-    const url = `/api/lyrics?artist=${encodeURIComponent(currentTrack.artist || '')}&title=${encodeURIComponent(cleanedTitle)}&q=${encodeURIComponent(`${currentTrack.artist || ''} ${cleanedTitle}`.trim())}&t=${Date.now()}`;
+    // Pass the track duration so the API can match the correct version on
+    // lrclib (and reject wrong-song search hits of a different length).
+    const dur = Math.round(currentTrack.duration || audioRef.current?.duration || 0);
+    const url = `/api/lyrics?artist=${encodeURIComponent(currentTrack.artist || '')}&title=${encodeURIComponent(cleanedTitle)}&q=${encodeURIComponent(`${currentTrack.artist || ''} ${cleanedTitle}`.trim())}${dur > 0 ? `&duration=${dur}` : ''}&t=${Date.now()}`;
 
     fetch(url, { signal: controller.signal })
       .then(res => res.json())
