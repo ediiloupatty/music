@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { usePlayer } from "@/context/PlayerContext";
 import { cleanTitle } from "@/lib/cleanTitle";
 import { formatDuration } from "@/lib/utils";
@@ -118,11 +119,20 @@ export default function QueuePanel({
   const { tracks, currentTrackIndex, upcoming, setCurrentTrackIndex } = usePlayer();
   const current = tracks[currentTrackIndex];
 
+  const [desktopOffset, setDesktopOffset] = useState(0);
+  useEffect(() => {
+    if ((window as { __ZENIFY_DESKTOP__?: boolean }).__ZENIFY_DESKTOP__) setDesktopOffset(32);
+  }, []);
+
   return (
     <>
       {/* Click-away backdrop (mobile only, desktop shifts main layout) */}
       {open && (
-        <div className="fixed inset-x-0 bottom-0 top-[77px] md:top-[89px] z-40 bg-black/30 queue-backdrop-in md:hidden" onClick={onClose} />
+        <div 
+          className="fixed inset-x-0 bottom-0 top-[77px] md:top-[89px] z-40 bg-black/30 queue-backdrop-in md:hidden" 
+          style={{ marginTop: `${desktopOffset}px` }}
+          onClick={onClose} 
+        />
       )}
 
       <aside
@@ -132,6 +142,7 @@ export default function QueuePanel({
           open ? "translate-x-0" : "translate-x-full"
         }`}
         style={{
+          marginTop: `${desktopOffset}px`,
           background: "transparent",
           borderLeft: "1px solid var(--border-subtle)",
         }}
