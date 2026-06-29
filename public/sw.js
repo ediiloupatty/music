@@ -56,31 +56,26 @@ async function handleAudioRequest(request) {
     return cached;
   }
 
-  // Not cached — fetch from network (without Range to get the full file)
+  // Not cached — fetch the stream directly from network to ensure instant playback (fast TTFB).
+  // In the background, request the full audio file with X-Full-Audio header to populate the offline cache.
   try {
+    const streamResponse = await fetch(request);
+
+    // Run full caching in the background without blocking the active audio stream
+    const fullHeaders = filterHeaders(request.headers, ["range"]);
+    fullHeaders.set("X-Full-Audio", "1");
     const fullRequest = new Request(cacheKey.url, {
       method: "GET",
-      headers: filterHeaders(request.headers, ["range"]),
+      headers: fullHeaders,
     });
 
-    const response = await fetch(fullRequest);
-
-    if (response.ok) {
-      // Clone and cache the full response
-      const cloned = response.clone();
-      // Don't await — cache in background
-      cache.put(cacheKey, cloned).then(() => evictIfNeeded());
-
-      // If the original request had a Range header, also serve the range
-      const rangeHeader = request.headers.get("range");
-      if (rangeHeader) {
-        return handleRangeFromFetch(response, rangeHeader);
+    fetch(fullRequest).then(res => {
+      if (res.status === 200) {
+        cache.put(cacheKey, res.clone()).then(() => evictIfNeeded());
       }
-      return response;
-    }
+    }).catch(() => {});
 
-    // Non-OK but not failed — return as-is (e.g. 206 from proxy)
-    return response;
+    return streamResponse;
   } catch (err) {
     // Network failed and no cache — return offline error
     return new Response("Audio not available offline", {

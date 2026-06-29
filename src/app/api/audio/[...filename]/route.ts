@@ -45,13 +45,17 @@ export async function GET(
 
   try {
     const rawRange = request.headers.get("range");
+    const isFullAudio = request.headers.get("x-full-audio") === "1";
 
     // Force initial chunking (1MB) if the browser requests the entire file or omits Range.
     // This prevents downloading the entire 30MB-100MB FLAC/WAV file before playback begins,
     // ensuring lightning-fast Time-To-First-Byte (TTFB) and instant audio playback.
+    // If X-Full-Audio is present, bypass chunking so the Service Worker can cache the full file.
     let rangeParam = rawRange;
-    if (!rawRange || rawRange === "bytes=0-") {
+    if (!isFullAudio && (!rawRange || rawRange === "bytes=0-")) {
       rangeParam = "bytes=0-1048575"; // 1MB initial chunk
+    } else if (isFullAudio) {
+      rangeParam = null;
     }
 
     const command = new GetObjectCommand({
