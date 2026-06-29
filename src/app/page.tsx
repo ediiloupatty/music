@@ -16,7 +16,7 @@ export default async function LandingPage() {
           alt="Zenify Background"
           fill
           priority
-          quality={85}
+          quality={75}
           className="object-cover object-center opacity-40 filter blur-[25px] scale-110 transform"
         />
         {/* Subtle overlay gradient to ensure text readability */}
