@@ -12,8 +12,13 @@ export default async function Sidebar({ currentCategory }: { currentCategory?: s
 
   return (
     <aside
-      className="hidden md:flex relative z-20 flex-col w-[220px] py-7 flex-shrink-0 h-full"
-      style={{ borderRight: "1px solid var(--border-subtle)" }}
+      className="hidden md:flex relative z-20 flex-col w-[220px] py-7 flex-shrink-0 h-full backdrop-blur-xl transition-all duration-500"
+      style={{
+        background: "rgba(43, 51, 63, 0.4)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
+        borderRight: "1px solid var(--border-subtle)",
+      }}
     >
       {/* App logo / Avatar */}
       <SidebarProfile 

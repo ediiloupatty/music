@@ -56,7 +56,15 @@ export default async function Home({
       <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
 
         {/* TOP BAR */}
-        <header className="flex items-center justify-between px-4 md:px-8 pt-5 md:pt-7 pb-4 md:pb-5 flex-shrink-0 gap-3">
+        <header
+          className="flex items-center justify-between px-4 md:px-8 pt-5 md:pt-7 pb-4 md:pb-5 flex-shrink-0 gap-3 backdrop-blur-xl transition-all duration-500 z-20"
+          style={{
+            background: "rgba(43, 51, 63, 0.4)",
+            backdropFilter: "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
+            borderBottom: "1px solid var(--border-subtle)",
+          }}
+        >
           
           {/* Mobile logo */}
           <div className="md:hidden flex items-center justify-center flex-shrink-0">
