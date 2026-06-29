@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
+// lrclib's search endpoint currently responds in ~8-13s. Give the whole
+// multi-tier lookup room to finish instead of letting the platform cut the
+// function off mid-fetch (default is as low as 10s on some plans).
+export const maxDuration = 45;
+
+// Per-request timeout for each lrclib call. Measured latencies: /api/get ~8s,
+// /api/search ~8-13s. 5s (the previous value) aborted almost every call before
+// lrclib answered, which is why lyrics stopped showing. 12s catches the vast
+// majority while still bailing on a genuinely hung request.
+const LRCLIB_TIMEOUT_MS = 12000;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -22,7 +32,7 @@ export async function GET(request: Request) {
     if (artist && title) {
       const getRes = await fetch(`https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`, {
         headers,
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(LRCLIB_TIMEOUT_MS),
         cache: 'no-store'
       });
       if (getRes.ok) {
@@ -39,7 +49,7 @@ export async function GET(request: Request) {
     const searchQuery = artist ? `${artist} ${title}` : effectiveTitle;
     const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(searchQuery)}`, {
       headers,
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(LRCLIB_TIMEOUT_MS),
       cache: 'no-store'
     });
 
@@ -65,7 +75,7 @@ export async function GET(request: Request) {
     if (artist) {
       const titleRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(title)}`, {
         headers,
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(LRCLIB_TIMEOUT_MS),
         cache: 'no-store'
       });
       if (titleRes.ok) {
