@@ -243,16 +243,36 @@ export default function BottomPlayer() {
     }
   }
 
-  // Single RAF loop: computes active lyric index + sweep from audio.currentTime directly
-  // This removes the ~250ms delay from timeupdate events entirely
+  // Single RAF loop: computes active lyric index + sweep from audio.currentTime directly.
+  // Backs off to a 500 ms poll when audio is paused or the tab is hidden to avoid
+  // spinning at 60 fps while nothing is moving, which wastes CPU / battery.
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+
   useEffect(() => {
     let rafId: number;
+    let backoffId: ReturnType<typeof setTimeout> | null = null;
+    let active = true;
+
+    const scheduleNext = (audio: HTMLAudioElement | null) => {
+      if (!active) return;
+      // Back off to 500 ms when paused or tab is hidden
+      if (!audio || audio.paused || document.hidden) {
+        backoffId = setTimeout(() => {
+          backoffId = null;
+          if (active) rafId = requestAnimationFrame(tick);
+        }, 500);
+      } else {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+
     const tick = () => {
       const lyrics    = parsedLyricsRef.current;
       const container = lyricsContainerRef.current;
       const audio     = audioRef.current;
 
-      if (lyrics && audio) {
+      if (lyrics && audio && !audio.paused && !document.hidden) {
         // Compensate for audio output latency: the sound the user HEARS right now
         // corresponds to playback position (currentTime - outputLatency), since the
         // buffer at currentTime hasn't reached the speakers yet. This auto-corrects
@@ -364,10 +384,25 @@ export default function BottomPlayer() {
         }
       }
 
-      rafId = requestAnimationFrame(tick);
+      scheduleNext(audioRef.current);
     };
+
+    // When the tab becomes visible again, resume full-rate RAF immediately
+    const onVisibilityChange = () => {
+      if (!document.hidden && active) {
+        if (backoffId !== null) { clearTimeout(backoffId); backoffId = null; }
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      active = false;
+      cancelAnimationFrame(rafId);
+      if (backoffId !== null) clearTimeout(backoffId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -403,7 +438,9 @@ export default function BottomPlayer() {
       audioContextRef.current = ctx;
       
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
+      // 128 → 64 frequency bins; halving fftSize cuts analyser CPU work in half
+      // with no perceptible difference for the bar visualiser.
+      analyser.fftSize = 128;
       analyser.smoothingTimeConstant = 0.82;
       analyserRef.current = analyser;
 
@@ -777,19 +814,39 @@ export default function BottomPlayer() {
     let ar = 45, ag = 212, ab = 191; // fallback teal
     if (coverColor) { ar = coverColor.r; ag = coverColor.g; ab = coverColor.b; }
 
+    // Allocate the frequency buffer ONCE and reuse each frame to avoid creating
+    // a new Uint8Array at 60 fps (which triggers garbage collection and stutters).
+    const bufferLength = analyserRef.current?.frequencyBinCount ?? 64;
+    const dataArray = new Uint8Array(bufferLength);
+
     let animationFrame: number;
+    let backoffId: ReturnType<typeof setTimeout> | null = null;
+    let active = true;
+
+    const scheduleNext = () => {
+      if (!active) return;
+      const audio = audioRef.current;
+      // Pause the visualiser when audio is idle or the tab is backgrounded
+      if (!audio || audio.paused || document.hidden) {
+        backoffId = setTimeout(() => {
+          backoffId = null;
+          if (active) animationFrame = requestAnimationFrame(renderFrame);
+        }, 200);
+      } else {
+        animationFrame = requestAnimationFrame(renderFrame);
+      }
+    };
+
     const renderFrame = () => {
-      animationFrame = requestAnimationFrame(renderFrame);
-      if (!analyserRef.current || !canvasRef.current) return;
+      if (!analyserRef.current || !canvasRef.current) { scheduleNext(); return; }
 
       const analyser = analyserRef.current;
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
+      // Reuse the pre-allocated buffer — no GC pressure
       analyser.getByteFrequencyData(dataArray);
 
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) { scheduleNext(); return; }
 
       const WIDTH = canvas.width;
       const HEIGHT = canvas.height;
@@ -818,10 +875,27 @@ export default function BottomPlayer() {
         ctx.fill();
         x += barWidth;
       }
+
+      scheduleNext();
     };
-    renderFrame();
-    return () => cancelAnimationFrame(animationFrame);
-  }, [isExpanded, coverColor]);
+
+    // Resume immediately when the tab becomes visible
+    const onVisibilityChange = () => {
+      if (!document.hidden && active) {
+        if (backoffId !== null) { clearTimeout(backoffId); backoffId = null; }
+        animationFrame = requestAnimationFrame(renderFrame);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    animationFrame = requestAnimationFrame(renderFrame);
+    return () => {
+      active = false;
+      cancelAnimationFrame(animationFrame);
+      if (backoffId !== null) clearTimeout(backoffId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [isExpanded, coverColor, isPlaying]);
 
   const rawUrl = currentTrack?.file_url || "";
   const audioSrc = rawUrl.includes(".r2.dev/")

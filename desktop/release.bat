@@ -25,7 +25,7 @@ if errorlevel 1 ( echo GAGAL - pastikan windres ada di PATH ^(C:\msys64\mingw64\
 
 echo [3/3] Build zenify-desktop.exe ^(URL: %URL%^)...
 set CGO_ENABLED=1
-go build -ldflags="-H windowsgui -s -w -X main.defaultURL=%URL%" -o zenify-desktop.exe .
+go build -ldflags="-H windowsgui -s -w -extldflags \"-static\" -X main.defaultURL=%URL%" -o zenify-desktop.exe .
 if errorlevel 1 ( echo GAGAL & pause & exit /b 1 )
 
 echo.

@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 	"time"
@@ -398,4 +399,41 @@ func loadWindowState() *windowState {
 		return nil // off-screen → fall through to default centering
 	}
 	return &s
+}
+
+// ─── Environment Verification (WebView2) ────────────────────────────────────
+
+func checkEnvironment() bool {
+	if !hasWebView2() {
+		showNoWebView2Error()
+		return false
+	}
+	return true
+}
+
+func hasWebView2() bool {
+	var h syscall.Handle
+	err := syscall.RegOpenKeyEx(syscall.HKEY_LOCAL_MACHINE, syscall.StringToUTF16Ptr(`SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`), 0, syscall.KEY_READ, &h)
+	if err == nil {
+		syscall.RegCloseKey(h)
+		return true
+	}
+	err = syscall.RegOpenKeyEx(syscall.HKEY_LOCAL_MACHINE, syscall.StringToUTF16Ptr(`SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`), 0, syscall.KEY_READ, &h)
+	if err == nil {
+		syscall.RegCloseKey(h)
+		return true
+	}
+	err = syscall.RegOpenKeyEx(syscall.HKEY_CURRENT_USER, syscall.StringToUTF16Ptr(`Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`), 0, syscall.KEY_READ, &h)
+	if err == nil {
+		syscall.RegCloseKey(h)
+		return true
+	}
+	return false
+}
+
+func showNoWebView2Error() {
+	title, _ := syscall.UTF16PtrFromString("Zenify - WebView2 Runtime Dibutuhkan")
+	msg, _ := syscall.UTF16PtrFromString("Microsoft WebView2 Runtime tidak ditemukan di komputer ini.\n\nZenify membutuhkan WebView2 untuk menampilkan antarmuka aplikasi.\n\nKlik OK untuk membuka halaman download resmi dari Microsoft.")
+	user32.NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), 0x00000030)
+	exec.Command("rundll32", "url.dll,FileProtocolHandler", "https://developer.microsoft.com/microsoft-edge/webview2/").Start()
 }

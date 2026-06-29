@@ -10,7 +10,7 @@ windres zenify.rc -O coff -o zenify.syso
 if errorlevel 1 ( echo FAILED - pastikan windres ada di PATH (C:\msys64\mingw64\bin) && pause && exit /b 1 )
 
 echo [3/3] Building zenify-desktop.exe...
-go build -ldflags="-H windowsgui" -o zenify-desktop.exe .
+go build -trimpath -ldflags="-H windowsgui -extldflags \"-static\"" -o zenify-desktop.exe .
 if errorlevel 1 ( echo FAILED && pause && exit /b 1 )
 
 echo.

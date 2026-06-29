@@ -105,6 +105,10 @@ func main() {
 	debug := flag.Bool("debug", false, "open the webview devtools")
 	flag.Parse()
 
+	if !checkEnvironment() {
+		os.Exit(1)
+	}
+
 	// The worker owns the Discord connection so the UI thread never blocks on IPC.
 	updates := make(chan presence, 1)
 	go discordWorker(updates)

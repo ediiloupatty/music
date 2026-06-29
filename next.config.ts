@@ -5,8 +5,17 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '150mb',
     },
+    // Tree-shake heavy packages more aggressively — reduces JS bundle parsed
+    // by the browser on initial load without any code changes needed elsewhere.
+    optimizePackageImports: ['swr', 'fuse.js', 'music-metadata'],
   },
   images: {
+    // Prefer AVIF then WebP for album art — typically 40-60 % smaller than JPEG
+    // with equal or better quality, reducing bandwidth and decode time.
+    formats: ['image/avif', 'image/webp'],
+    // Cache remote images for 24 hours so repeated loads hit the CDN instead of
+    // re-fetching and re-optimising on every request.
+    minimumCacheTTL: 86400,
     // Cover art is served from a few known origins: the R2 public bucket
     // (pub-*.r2.dev), the R2 S3 endpoint (*.r2.cloudflarestorage.com), an
     // optional custom CDN domain set via R2_CDN_URL, or our own /api/cover/*

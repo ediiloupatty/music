@@ -1,9 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from "react";
 import { Track } from "@/lib/cloudflare";
 
-const STORAGE_KEY = "zenify_player";
+const STORAGE_KEY_QUEUE = "zenify_queue";
+const STORAGE_KEY_STATE = "zenify_state";
+// Legacy key — read-only for migration, never written to.
+const STORAGE_KEY_LEGACY = "zenify_player";
 const HISTORY_LIMIT = 100;
 
 type RepeatMode = "off" | "all" | "one";
@@ -193,176 +196,268 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     .map((trackIdx) => ({ track: tracks[trackIdx], index: trackIdx }))
     .filter((u) => u.track);
 
-  // Restore the last session on reload so playback stays in sync across pages /
-  // refreshes. We also restore `isPlaying`; the BottomPlayer attempts to resume
-  // and gracefully falls back to paused if the browser blocks autoplay (so the
-  // UI never lies about the real audio state). Playback position is restored by
-  // the BottomPlayer from its own saved value. Old saves (pre-playOrder) are
-  // handled by rebuilding an identity order and mapping the saved index.
+  // ── Restore the last session on reload ─────────────────────────────────────
+  // Reads from the split keys first, then falls back to the legacy single key
+  // for seamless migration. Old saves (pre-playOrder) are handled by
+  // rebuilding an identity order and mapping the saved index.
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      if (!Array.isArray(saved.tracks) || saved.tracks.length === 0) return;
+      // Try split storage first
+      const qRaw = localStorage.getItem(STORAGE_KEY_QUEUE);
+      const sRaw = localStorage.getItem(STORAGE_KEY_STATE);
+      // Fall back to legacy single-key format
+      const legRaw = !qRaw ? localStorage.getItem(STORAGE_KEY_LEGACY) : null;
 
-      const n = saved.tracks.length;
-      setTracks(saved.tracks);
+      const queue = qRaw ? JSON.parse(qRaw) : (legRaw ? JSON.parse(legRaw) : null);
+      const state = sRaw ? JSON.parse(sRaw) : (legRaw ? JSON.parse(legRaw) : null);
+      if (!queue || !Array.isArray(queue.tracks) || queue.tracks.length === 0) return;
+
+      const n = queue.tracks.length;
+      setTracks(queue.tracks);
 
       const order =
-        Array.isArray(saved.playOrder) && saved.playOrder.length === n
-          ? saved.playOrder
+        Array.isArray(queue.playOrder) && queue.playOrder.length === n
+          ? queue.playOrder
           : identityOrder(n);
       setPlayOrder(order);
 
       let pos = 0;
-      if (typeof saved.position === "number") {
-        pos = saved.position;
-      } else if (typeof saved.currentTrackIndex === "number") {
-        // Legacy save: map the old track index into the order.
-        const mapped = order.indexOf(saved.currentTrackIndex);
-        pos = mapped >= 0 ? mapped : saved.currentTrackIndex;
+      if (typeof (state?.position) === "number") {
+        pos = state.position;
+      } else if (typeof (state?.currentTrackIndex) === "number") {
+        const mapped = order.indexOf(state.currentTrackIndex);
+        pos = mapped >= 0 ? mapped : state.currentTrackIndex;
       }
       setPosition(Math.min(Math.max(0, pos), n - 1));
 
-      if (Array.isArray(saved.history)) setHistory(saved.history);
-      if (saved.repeatMode) setRepeatMode(saved.repeatMode);
-      if (typeof saved.shuffle === "boolean") setShuffle(saved.shuffle);
-      if (typeof saved.isPlaying === "boolean") setIsPlaying(saved.isPlaying);
+      if (Array.isArray(queue.history)) setHistory(queue.history);
+      if (state?.repeatMode) setRepeatMode(state.repeatMode);
+      if (typeof state?.shuffle === "boolean") setShuffle(state.shuffle);
+      if (typeof state?.isPlaying === "boolean") setIsPlaying(state.isPlaying);
+
+      // Clean up legacy key after successful migration
+      if (legRaw) {
+        try { localStorage.removeItem(STORAGE_KEY_LEGACY); } catch {}
+      }
     } catch {}
   }, []);
 
-  // Persist the queue + play state whenever it changes.
+  // ── Persist: lightweight state (written immediately) ──────────────────────
+  // position/repeatMode/shuffle/isPlaying change often (every play/pause) but
+  // serialize to a tiny payload (<100 bytes). No debounce needed.
   useEffect(() => {
     try {
-      if (tracks.length > 0) {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({ tracks, playOrder, position, history, repeatMode, shuffle, isPlaying })
-        );
-      }
+      localStorage.setItem(
+        STORAGE_KEY_STATE,
+        JSON.stringify({ position, repeatMode, shuffle, isPlaying })
+      );
     } catch {}
-  }, [tracks, playOrder, position, history, repeatMode, shuffle, isPlaying]);
+  }, [position, repeatMode, shuffle, isPlaying]);
 
-  const playTrack = (newTracks: Track[], startIndex: number) => {
+  // ── Persist: heavy queue data (debounced 2 s) ─────────────────────────────
+  // tracks/playOrder/history are large arrays that change infrequently (only on
+  // queue load / shuffle toggle / track end). Debouncing avoids the expensive
+  // JSON.stringify of potentially hundreds of Track objects on every tick.
+  const queueSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (tracks.length === 0) return;
+    if (queueSaveTimer.current) clearTimeout(queueSaveTimer.current);
+    queueSaveTimer.current = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          STORAGE_KEY_QUEUE,
+          JSON.stringify({ tracks, playOrder, history })
+        );
+      } catch {}
+    }, 2000);
+    return () => { if (queueSaveTimer.current) clearTimeout(queueSaveTimer.current); };
+  }, [tracks, playOrder, history]);
+
+  // ── Stable callbacks (useCallback) ─────────────────────────────────────────
+  // Wrapping action handlers in useCallback prevents the useMemo'd context
+  // value from busting on every render, which would cascade re-renders to
+  // all 37+ consumer components.
+
+  const playTrack = useCallback((newTracks: Track[], startIndex: number) => {
     setTracks(newTracks);
-    if (shuffle) {
-      // Vibe order anchors the clicked track first, so position 0 plays it.
-      setPlayOrder(buildVibeOrder(newTracks, startIndex));
-      setPosition(0);
-    } else {
-      setPlayOrder(identityOrder(newTracks.length));
-      setPosition(startIndex);
-    }
+    setShuffle((shuf) => {
+      if (shuf) {
+        setPlayOrder(buildVibeOrder(newTracks, startIndex));
+        setPosition(0);
+      } else {
+        setPlayOrder(identityOrder(newTracks.length));
+        setPosition(startIndex);
+      }
+      return shuf;
+    });
     setHistory([]);
     setIsPlaying(true);
-  };
+  }, []);
 
   // `auto` = triggered by a track ending (vs the user clicking next). When a
   // track ends with repeat off and we're at the end of the order, playback
   // stops. (Repeat-one is handled in BottomPlayer and never reaches here.)
-  const playNextTrack = (auto = false) => {
-    if (tracks.length === 0) return;
+  const playNextTrack = useCallback((auto = false) => {
+    setTracks((curTracks) => {
+      if (curTracks.length === 0) return curTracks;
+      setPlayOrder((curOrder) => {
+        setPosition((curPos) => {
+          setRepeatMode((curRepeat) => {
+            setShuffle((curShuffle) => {
+              const atEnd = curPos >= curOrder.length - 1;
+              if (atEnd) {
+                if (auto && curRepeat === "off") {
+                  setIsPlaying(false);
+                  return curShuffle;
+                }
+                if (curShuffle) {
+                  const curIdx = curOrder[curPos] ?? 0;
+                  const fresh = buildVibeOrder(curTracks, curIdx);
+                  setPlayOrder(fresh);
+                  setPosition(fresh.length > 1 ? 1 : 0);
+                } else {
+                  setPosition(0);
+                }
+                setHistory((h) => [...h, curPos].slice(-HISTORY_LIMIT));
+                setIsPlaying(true);
+              } else {
+                setHistory((h) => [...h, curPos].slice(-HISTORY_LIMIT));
+                setPosition(curPos + 1);
+                setIsPlaying(true);
+              }
+              return curShuffle;
+            });
+            return curRepeat;
+          });
+          return curPos; // actual update done inside
+        });
+        return curOrder; // actual update done inside
+      });
+      return curTracks;
+    });
+  }, []);
 
-    const atEnd = position >= playOrder.length - 1;
-    if (atEnd) {
-      if (auto && repeatMode === "off") {
-        setIsPlaying(false);
-        return; // stay on the last track, paused
-      }
-      // Wrap: manual next, or repeat all.
-      if (shuffle) {
-        // Fresh pass, anchored on the current track so the flow continues; skip
-        // index 0 (the track we just played) to avoid an immediate repeat.
-        const fresh = buildVibeOrder(tracks, currentTrackIndex);
-        setPlayOrder(fresh);
-        setPosition(fresh.length > 1 ? 1 : 0);
-      } else {
-        setPosition(0);
-      }
-      setHistory((h) => [...h, position].slice(-HISTORY_LIMIT));
+  const playPrevTrack = useCallback(() => {
+    setTracks((curTracks) => {
+      if (curTracks.length === 0) return curTracks;
+      setHistory((curHistory) => {
+        if (curHistory.length > 0) {
+          setPosition(curHistory[curHistory.length - 1]);
+          return curHistory.slice(0, -1);
+        } else {
+          setPlayOrder((curOrder) => {
+            setPosition((curPos) => (curPos - 1 + curOrder.length) % curOrder.length);
+            return curOrder;
+          });
+          return curHistory;
+        }
+      });
       setIsPlaying(true);
-      return;
-    }
+      return curTracks;
+    });
+  }, []);
 
-    setHistory((h) => [...h, position].slice(-HISTORY_LIMIT));
-    setPosition(position + 1);
-    setIsPlaying(true);
-  };
-
-  const playPrevTrack = () => {
-    if (tracks.length === 0) return;
-    if (history.length > 0) {
-      // Proper "previous": return to the track we actually came from.
-      setPosition(history[history.length - 1]);
-      setHistory(history.slice(0, -1));
-    } else {
-      setPosition((position - 1 + playOrder.length) % playOrder.length);
-    }
-    setIsPlaying(true);
-  };
-
-  const toggleRepeat = () => {
+  const toggleRepeat = useCallback(() => {
     setRepeatMode((prev) => (prev === "off" ? "all" : prev === "all" ? "one" : "off"));
-  };
+  }, []);
 
-  const toggleShuffle = () => {
-    const turningOn = !shuffle;
-    if (turningOn) {
-      // Rebuild around the current track so it keeps playing, then flow on.
-      setPlayOrder(buildVibeOrder(tracks, currentTrackIndex));
-      setPosition(0);
-    } else {
-      // Back to natural order, parked on the current track.
-      setPlayOrder(identityOrder(tracks.length));
-      setPosition(currentTrackIndex);
-    }
-    setHistory([]);
-    setShuffle(turningOn);
-  };
+  const toggleShuffle = useCallback(() => {
+    setShuffle((prev) => {
+      const turningOn = !prev;
+      if (turningOn) {
+        setTracks((curTracks) => {
+          setPlayOrder((curOrder) => {
+            setPosition((curPos) => {
+              const curIdx = curOrder[curPos] ?? 0;
+              const newOrder = buildVibeOrder(curTracks, curIdx);
+              setPlayOrder(newOrder);
+              setPosition(0);
+              return curPos;
+            });
+            return curOrder;
+          });
+          return curTracks;
+        });
+      } else {
+        setTracks((curTracks) => {
+          setPlayOrder((curOrder) => {
+            setPosition((curPos) => {
+              const curIdx = curOrder[curPos] ?? 0;
+              setPlayOrder(identityOrder(curTracks.length));
+              setPosition(curIdx);
+              return curPos;
+            });
+            return curOrder;
+          });
+          return curTracks;
+        });
+      }
+      setHistory([]);
+      return turningOn;
+    });
+  }, []);
 
   // Kept for API compatibility: callers pass an index into `tracks`; we map it
   // onto the current play order.
-  const setCurrentTrackIndex = (index: number) => {
-    const pos = playOrder.indexOf(index);
-    if (pos < 0) return;
-    setHistory((h) => [...h, position].slice(-HISTORY_LIMIT));
-    setPosition(pos);
-  };
+  const setCurrentTrackIndex = useCallback((index: number) => {
+    setPlayOrder((curOrder) => {
+      const pos = curOrder.indexOf(index);
+      if (pos < 0) return curOrder;
+      setPosition((curPos) => {
+        setHistory((h) => [...h, curPos].slice(-HISTORY_LIMIT));
+        return pos;
+      });
+      return curOrder;
+    });
+  }, []);
 
-  const reorderUpcoming = (fromIndex: number, toIndex: number) => {
+  const reorderUpcoming = useCallback((fromIndex: number, toIndex: number) => {
     if (fromIndex < 0 || toIndex < 0) return;
-    const pastAndCurrent = playOrder.slice(0, position + 1);
-    const upcomingIds = playOrder.slice(position + 1);
-    if (fromIndex >= upcomingIds.length || toIndex >= upcomingIds.length) return;
+    setPlayOrder((curOrder) => {
+      setPosition((curPos) => {
+        const pastAndCurrent = curOrder.slice(0, curPos + 1);
+        const upcomingIds = curOrder.slice(curPos + 1);
+        if (fromIndex >= upcomingIds.length || toIndex >= upcomingIds.length) return curPos;
+        const [moved] = upcomingIds.splice(fromIndex, 1);
+        upcomingIds.splice(toIndex, 0, moved);
+        setPlayOrder([...pastAndCurrent, ...upcomingIds]);
+        return curPos;
+      });
+      return curOrder;
+    });
+  }, []);
 
-    const [moved] = upcomingIds.splice(fromIndex, 1);
-    upcomingIds.splice(toIndex, 0, moved);
-
-    setPlayOrder([...pastAndCurrent, ...upcomingIds]);
-  };
+  // ── Memoised context value ─────────────────────────────────────────────────
+  // Without useMemo, every render of PlayerProvider creates a fresh object
+  // reference, causing ALL 37+ consumer components to re-render even when
+  // nothing they read actually changed. Functions are stable (useCallback)
+  // so they don't bust the memo.
+  const value = useMemo<PlayerContextType>(() => ({
+    tracks,
+    currentTrackIndex,
+    isPlaying,
+    repeatMode,
+    shuffle,
+    playTrack,
+    playNextTrack,
+    playPrevTrack,
+    setIsPlaying,
+    setCurrentTrackIndex,
+    toggleRepeat,
+    toggleShuffle,
+    showQueue,
+    setShowQueue,
+    upcoming,
+    reorderUpcoming,
+  }), [
+    tracks, currentTrackIndex, isPlaying, repeatMode, shuffle,
+    playTrack, playNextTrack, playPrevTrack, setIsPlaying,
+    setCurrentTrackIndex, toggleRepeat, toggleShuffle,
+    showQueue, setShowQueue, upcoming, reorderUpcoming,
+  ]);
 
   return (
-    <PlayerContext.Provider
-      value={{
-        tracks,
-        currentTrackIndex,
-        isPlaying,
-        repeatMode,
-        shuffle,
-        playTrack,
-        playNextTrack,
-        playPrevTrack,
-        setIsPlaying,
-        setCurrentTrackIndex,
-        toggleRepeat,
-        toggleShuffle,
-        showQueue,
-        setShowQueue,
-        upcoming,
-        reorderUpcoming,
-      }}
-    >
+    <PlayerContext.Provider value={value}>
       {children}
     </PlayerContext.Provider>
   );
