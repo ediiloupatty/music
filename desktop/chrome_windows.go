@@ -3,6 +3,9 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"syscall"
 	"time"
 	"unsafe"
@@ -16,13 +19,18 @@ var (
 	pSendMessage     = user32.NewProc("SendMessageW")
 	pGetWindowRect   = user32.NewProc("GetWindowRect")
 	pMonitorFromWin  = user32.NewProc("MonitorFromWindow")
+	pMonitorFromRect = user32.NewProc("MonitorFromRect")
 	pGetMonitorInfo  = user32.NewProc("GetMonitorInfoW")
 	pLoadImage       = user32.NewProc("LoadImageW")
 	pGetWindowLong   = user32.NewProc("GetWindowLongPtrW")
 	pSetWindowLong   = user32.NewProc("SetWindowLongPtrW")
 	pCallWindowProc  = user32.NewProc("CallWindowProcW")
-	pFindWindow      = user32.NewProc("FindWindowW")
-	pGetModuleHandle = syscall.NewLazyDLL("kernel32.dll").NewProc("GetModuleHandleW")
+	pFindWindow                = user32.NewProc("FindWindowW")
+	pSetForegroundWindow       = user32.NewProc("SetForegroundWindow")
+	pGetDpiForWindow           = user32.NewProc("GetDpiForWindow")
+	pSetProcessDpiAwarenessCtx = user32.NewProc("SetProcessDpiAwarenessContext")
+	pGetModuleHandle           = syscall.NewLazyDLL("kernel32.dll").NewProc("GetModuleHandleW")
+	pDwmSetWindowAttr          = syscall.NewLazyDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute")
 )
 
 const (
@@ -40,7 +48,15 @@ const (
 	wmNcCalcSize    = 0x0083
 	wmNcHitTest     = 0x0084
 	wmNcLButtonDown = 0x00A1
+	wmClose         = 0x0010
+	wmAppCommand    = 0x0319
 	htCaption       = 2
+
+	// APPCOMMAND media key codes (from WM_APPCOMMAND lparam >> 16)
+	appCmdPlayPause = 14
+	appCmdNextTrack = 11
+	appCmdPrevTrack = 12
+	appCmdStop      = 13
 )
 
 type rect struct{ Left, Top, Right, Bottom int32 }
@@ -61,7 +77,33 @@ var (
 
 	revealRect rect // where to place the window once content is ready
 	revealed   bool // true after the first reveal; later reloads must not move/resize
+
+	dpiSupported bool // true if GetDpiForWindow is available (Win10 1607+)
 )
+
+// mediaKeyCh delivers media key actions from WM_APPCOMMAND to the JS bridge.
+var mediaKeyCh = make(chan string, 4)
+
+func init() {
+	// Declare per-monitor-V2 DPI awareness before any windows are created.
+	// Win10 1703+; WebView2 requires 1809+ so this is always available.
+	if pSetProcessDpiAwarenessCtx.Find() == nil {
+		pSetProcessDpiAwarenessCtx.Call(^uintptr(3)) // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+	}
+	dpiSupported = pGetDpiForWindow.Find() == nil
+}
+
+// getDPI returns the effective DPI for the window (96 = 100% scaling).
+func getDPI(hwnd uintptr) int32 {
+	if !dpiSupported {
+		return 96
+	}
+	dpi, _, _ := pGetDpiForWindow.Call(hwnd)
+	if dpi == 0 {
+		return 96
+	}
+	return int32(dpi)
+}
 
 // decorateWindow turns the window frameless (so the web draws its own title bar)
 // without leaving the leftover black non-client strip, and sets the dark hint +
@@ -76,10 +118,9 @@ func decorateWindow(hwnd uintptr) {
 }
 
 func setDarkTitleBar(hwnd uintptr) {
-	proc := syscall.NewLazyDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute")
 	var enabled int32 = 1
 	for _, attr := range []uintptr{20, 19} {
-		proc.Call(hwnd, attr, uintptr(unsafe.Pointer(&enabled)), unsafe.Sizeof(enabled))
+		pDwmSetWindowAttr.Call(hwnd, attr, uintptr(unsafe.Pointer(&enabled)), unsafe.Sizeof(enabled))
 	}
 }
 
@@ -149,6 +190,28 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		}
 	case wmNcHitTest:
 		return hitTest(hwnd, lparam)
+	case wmAppCommand:
+		cmd := int32((lparam >> 16) & 0xfff)
+		var action string
+		switch cmd {
+		case appCmdPlayPause:
+			action = "play-pause"
+		case appCmdNextTrack:
+			action = "next"
+		case appCmdPrevTrack:
+			action = "prev"
+		case appCmdStop:
+			action = "stop"
+		}
+		if action != "" {
+			select {
+			case mediaKeyCh <- action:
+			default:
+			}
+			return 1 // handled
+		}
+	case wmClose:
+		saveWindowState(hwnd)
 	}
 	r, _, _ := pCallWindowProc.Call(origWndProc, hwnd, msg, wparam, lparam)
 	return r
@@ -162,7 +225,7 @@ func hitTest(hwnd, lparam uintptr) uintptr {
 	var r rect
 	pGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
 
-	const b = 8
+	b := int32(8) * getDPI(hwnd) / 96 // scale for high-DPI displays
 	left := x < r.Left+b
 	right := x >= r.Right-b
 	top := y < r.Top+b
@@ -204,15 +267,25 @@ func hitTest(hwnd, lparam uintptr) uintptr {
 // centre of the current monitor and focuses it. Called from JS once the page has
 // loaded and painted.
 func winReveal(hwnd uintptr) {
-	// Only the first call (initial load) needs to un-park the window. The titlebar
-	// script re-runs winReveal() on every navigation/hard reload, but by then the
-	// window is already on-screen — re-centering it to revealRect would snap it
-	// back to the startup size (1100x720), losing any resize/maximize. So no-op.
 	if revealed {
 		return
 	}
 	revealed = true
 
+	// Try to restore the window state saved from the previous session.
+	if state := loadWindowState(); state != nil {
+		pSetWindowPos.Call(hwnd, 0,
+			uintptr(state.Left), uintptr(state.Top),
+			uintptr(state.Right-state.Left), uintptr(state.Bottom-state.Top),
+			swpNoZorder)
+		pSetForegroundWindow.Call(hwnd)
+		if state.Maximized {
+			winToggleMaximize(hwnd)
+		}
+		return
+	}
+
+	// Default: centre on the nearest monitor.
 	w := revealRect.Right - revealRect.Left
 	h := revealRect.Bottom - revealRect.Top
 	if w <= 0 {
@@ -228,10 +301,18 @@ func winReveal(hwnd uintptr) {
 	pGetMonitorInfo.Call(hmon, uintptr(unsafe.Pointer(&mi)))
 	wa := mi.RcWork
 
+	// Clamp to work area so the window always fits on screen (small displays).
+	if waW := wa.Right - wa.Left; w > waW {
+		w = waW
+	}
+	if waH := wa.Bottom - wa.Top; h > waH {
+		h = waH
+	}
+
 	x := wa.Left + (wa.Right-wa.Left-w)/2
 	y := wa.Top + (wa.Bottom-wa.Top-h)/2
 	pSetWindowPos.Call(hwnd, 0, uintptr(x), uintptr(y), uintptr(w), uintptr(h), swpNoZorder)
-	user32.NewProc("SetForegroundWindow").Call(hwnd)
+	pSetForegroundWindow.Call(hwnd)
 }
 
 func winMinimize(hwnd uintptr) { pShowWindow.Call(hwnd, swMinimize) }
@@ -260,9 +341,61 @@ func winToggleMaximize(hwnd uintptr) {
 }
 
 func winDragStart(hwnd uintptr) {
-	if isMaximized {
-		winToggleMaximize(hwnd)
-	}
 	pReleaseCapture.Call()
 	pSendMessage.Call(hwnd, wmNcLButtonDown, htCaption, 0)
+}
+
+// ─── Window state persistence ───────────────────────────────────────────────
+
+type windowState struct {
+	Left      int32 `json:"left"`
+	Top       int32 `json:"top"`
+	Right     int32 `json:"right"`
+	Bottom    int32 `json:"bottom"`
+	Maximized bool  `json:"maximized"`
+}
+
+func stateFile() string {
+	return filepath.Join(os.Getenv("APPDATA"), "Zenify", "window.json")
+}
+
+func saveWindowState(hwnd uintptr) {
+	var r rect
+	if isMaximized {
+		r = savedRect // use the pre-maximize rect
+	} else {
+		pGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
+	}
+	state := windowState{
+		Left: r.Left, Top: r.Top, Right: r.Right, Bottom: r.Bottom,
+		Maximized: isMaximized,
+	}
+	dir := filepath.Dir(stateFile())
+	os.MkdirAll(dir, 0755)
+	data, _ := json.Marshal(state)
+	os.WriteFile(stateFile(), data, 0644)
+}
+
+func loadWindowState() *windowState {
+	data, err := os.ReadFile(stateFile())
+	if err != nil {
+		return nil
+	}
+	var s windowState
+	if json.Unmarshal(data, &s) != nil {
+		return nil
+	}
+	// Sanity check: ensure the saved rect has a usable size.
+	if s.Right-s.Left < 520 || s.Bottom-s.Top < 400 {
+		return nil
+	}
+	// Verify the saved rect is still on a visible monitor (user may have
+	// unplugged an external display). MONITOR_DEFAULTTONULL = 0.
+	hmon, _, _ := pMonitorFromRect.Call(uintptr(unsafe.Pointer(&rect{
+		Left: s.Left, Top: s.Top, Right: s.Right, Bottom: s.Bottom,
+	})), 0)
+	if hmon == 0 {
+		return nil // off-screen → fall through to default centering
+	}
+	return &s
 }

@@ -2,8 +2,18 @@
 
 import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { r2Client, queryD1, initializeD1Tables } from "@/lib/cloudflare";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import * as mm from "music-metadata";
+
+function revalidateAll(customPath?: string) {
+  revalidatePath("/");
+  revalidatePath("/admin");
+  if (customPath) revalidatePath(customPath);
+  revalidateTag("tracks");
+  revalidateTag("albums");
+  revalidateTag("artists");
+  revalidateTag("playlists");
+}
 import sharp from "sharp";
 import { cleanTitle } from "@/lib/cleanTitle";
 import { fetchCoverArt, fetchArtistImage } from "@/lib/coverArt";
@@ -196,8 +206,7 @@ export async function uploadTrackAction(formData: FormData) {
       [trackId, finalTitle, category, fileUrl, artist, coverUrl, lyrics, album, year, genre, duration, bitDepth, sampleRate]
     );
 
-    revalidatePath("/");
-    revalidatePath("/admin");
+    revalidateAll();
 
     return { success: true };
   } catch (error: any) {
@@ -223,8 +232,7 @@ export async function updateTrackAction(
 
     params.push(id);
     await queryD1(`UPDATE tracks SET ${fields.join(", ")} WHERE id = ?`, params);
-    revalidatePath("/");
-    revalidatePath("/admin");
+    revalidateAll();
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -247,8 +255,7 @@ export async function recleanAllTitlesAction(): Promise<{ success: boolean; upda
       }
     }
     if (updated > 0) {
-      revalidatePath("/");
-      revalidatePath("/admin");
+      revalidateAll();
     }
     return { success: true, updated };
   } catch (error: any) {
@@ -319,8 +326,7 @@ export async function backfillAudioSpecsAction(): Promise<{ success: boolean; up
     }
 
     if (updated > 0) {
-      revalidatePath("/");
-      revalidatePath("/admin");
+      revalidateAll();
     }
     return { success: true, updated };
   } catch (error: any) {
@@ -417,8 +423,7 @@ export async function backfillMissingCoversAction(): Promise<{
       }
     }
 
-    revalidatePath("/");
-    revalidatePath("/admin");
+    revalidateAll();
     return { success: true, updated, notFound };
   } catch (error: any) {
     console.error("Backfill covers error:", error);
@@ -490,8 +495,7 @@ export async function backfillMissingArtistImagesAction(): Promise<{
       }
     }
 
-    revalidatePath("/");
-    revalidatePath("/admin");
+    revalidateAll();
     return { success: true, updated, notFound };
   } catch (error: any) {
     console.error("Backfill artist images error:", error);
@@ -536,8 +540,7 @@ export async function setAlbumCoverAction(formData: FormData): Promise<{ success
       [albumName, coverUrl]
     );
 
-    revalidatePath("/");
-    revalidatePath("/admin");
+    revalidateAll();
     return { success: true };
   } catch (error: any) {
     console.error("Set album cover error:", error);
@@ -571,8 +574,7 @@ export async function removeAlbumCoverAction(albumName: string): Promise<{ succe
     }
 
     await queryD1(`DELETE FROM albums WHERE name = ?`, [albumName]);
-    revalidatePath("/");
-    revalidatePath("/admin");
+    revalidateAll();
     return { success: true };
   } catch (error: any) {
     console.error("Remove album cover error:", error);
@@ -616,9 +618,7 @@ export async function setArtistImageAction(formData: FormData): Promise<{ succes
       [artistName, imageUrl]
     );
 
-    revalidatePath("/");
-    revalidatePath("/admin");
-    revalidatePath(`/artist/${encodeURIComponent(artistName)}`);
+    revalidateAll(`/artist/${encodeURIComponent(artistName)}`);
     return { success: true };
   } catch (error: any) {
     console.error("Set artist image error:", error);
@@ -637,8 +637,7 @@ export async function setArtistBioAction(artistName: string, bio: string): Promi
        ON CONFLICT(name) DO UPDATE SET bio = excluded.bio`,
       [artistName, bio.trim() || null]
     );
-    revalidatePath("/");
-    revalidatePath(`/artist/${encodeURIComponent(artistName)}`);
+    revalidateAll(`/artist/${encodeURIComponent(artistName)}`);
     return { success: true };
   } catch (error: any) {
     console.error("Set artist bio error:", error);
@@ -673,9 +672,7 @@ export async function removeArtistImageAction(artistName: string): Promise<{ suc
 
     // Keep the row only if a bio exists; otherwise drop it entirely.
     await queryD1(`UPDATE artists SET image_url = NULL WHERE name = ?`, [artistName]);
-    revalidatePath("/");
-    revalidatePath("/admin");
-    revalidatePath(`/artist/${encodeURIComponent(artistName)}`);
+    revalidateAll(`/artist/${encodeURIComponent(artistName)}`);
     return { success: true };
   } catch (error: any) {
     console.error("Remove artist image error:", error);
@@ -704,8 +701,7 @@ export async function deleteTrackAction(trackId: string, fileUrl: string) {
     await queryD1(`DELETE FROM tracks WHERE id = ?`, [trackId]);
     await queryD1(`DELETE FROM favorites WHERE track_id = ?`, [trackId]); // Clean up favorites too
 
-    revalidatePath("/");
-    revalidatePath("/admin");
+    revalidateAll();
 
     return { success: true };
   } catch (error: any) {
@@ -762,8 +758,7 @@ export async function compressAllCoversAction(): Promise<{ success: boolean; upd
       }
     }
 
-    revalidatePath("/");
-    revalidatePath("/admin");
+    revalidateAll();
     return { success: true, updated, failed, skipped };
   } catch (error: any) {
     console.error("Compress covers error:", error);

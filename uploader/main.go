@@ -151,6 +151,8 @@ func main() {
 		rel = filepath.ToSlash(rel)
 		artist, album, title := deriveFromPath(rel)
 		// Embedded tags win over folder-derived values when present.
+		var genre string
+		var year int
 		if tTitle, tArtist, tAlbum, tGenre, tYear, ok := readTags(p); ok {
 			if tTitle != "" {
 				title = tTitle
@@ -161,23 +163,9 @@ func main() {
 			if tAlbum != "" {
 				album = tAlbum
 			}
-			key := path.Join(keyPrefix, rel)
-			tracks = append(tracks, Track{
-				Path:        p,
-				Key:         key,
-				FileURL:     publicURL + "/" + key,
-				Size:        info.Size(),
-				Title:       strings.TrimSpace(title),
-				Artist:      strings.TrimSpace(artist),
-				Album:       strings.TrimSpace(album),
-				Genre:       strings.TrimSpace(tGenre),
-				Year:        tYear,
-				ContentType: contentTypeFor(ext),
-			})
-			totalSizeBytes += info.Size()
-			return nil
+			genre = tGenre
+			year = tYear
 		}
-		// No readable tags — fall back entirely to the folder structure.
 		key := path.Join(keyPrefix, rel)
 		tracks = append(tracks, Track{
 			Path:        p,
@@ -187,6 +175,8 @@ func main() {
 			Title:       strings.TrimSpace(title),
 			Artist:      strings.TrimSpace(artist),
 			Album:       strings.TrimSpace(album),
+			Genre:       strings.TrimSpace(genre),
+			Year:        year,
 			ContentType: contentTypeFor(ext),
 		})
 		totalSizeBytes += info.Size()

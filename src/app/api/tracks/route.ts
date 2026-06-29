@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   try {
     const tracks = await getTracksByCategory(category);
     return NextResponse.json({ tracks }, {
-      headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" },
+      headers: { "Cache-Control": "no-store" },
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

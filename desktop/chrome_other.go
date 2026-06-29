@@ -10,3 +10,8 @@ func winReveal(hwnd uintptr)              {}
 func winMinimize(hwnd uintptr)            {}
 func winToggleMaximize(hwnd uintptr)      {}
 func winDragStart(hwnd uintptr)           {}
+func saveWindowState(hwnd uintptr)        {}
+
+// mediaKeyCh is never written to on non-Windows; the goroutine in main blocks
+// harmlessly until the process exits.
+var mediaKeyCh = make(chan string, 4)

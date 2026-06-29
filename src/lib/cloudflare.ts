@@ -166,7 +166,7 @@ export const getPlaylists = cacheFn(
     }
   },
   ["playlists"],
-  { revalidate: 30 }
+  { revalidate: 30, tags: ["playlists"] }
 );
 
 export const getPlaylistById = cacheFn(
@@ -181,7 +181,7 @@ export const getPlaylistById = cacheFn(
     }
   },
   ["playlist-by-id"],
-  { revalidate: 30 }
+  { revalidate: 30, tags: ["playlists"] }
 );
 
 
@@ -301,7 +301,7 @@ export const getTracksByCategory = cacheFn(
     }
   },
   ["tracks-by-category"],
-  { revalidate: 30 }
+  { revalidate: 30, tags: ["tracks", "albums", "artists"] }
 );
 
 export async function getTrackById(id: string): Promise<Track | null> {
@@ -329,7 +329,7 @@ export const getTracksByAlbum = cacheFn(
     }
   },
   ["tracks-by-album"],
-  { revalidate: 30 }
+  { revalidate: 30, tags: ["tracks", "albums"] }
 );
 
 export type Artist = {
@@ -354,7 +354,7 @@ export const getTracksByArtist = cacheFn(
     }
   },
   ["tracks-by-artist"],
-  { revalidate: 30 }
+  { revalidate: 30, tags: ["tracks", "albums", "artists"] }
 );
 
 // Increment a track's play counter and stamp last-played (best-effort).
@@ -385,7 +385,7 @@ export const getRecentlyPlayed = cacheFn(
     }
   },
   ["recently-played"],
-  { revalidate: 30 }
+  { revalidate: 30, tags: ["tracks", "albums"] }
 );
 
 // Newest additions to the library (most recent first).
@@ -402,7 +402,7 @@ export const getNewTracks = cacheFn(
     }
   },
   ["new-tracks"],
-  { revalidate: 30 }
+  { revalidate: 30, tags: ["tracks", "albums"] }
 );
 
 // List every artist (derived from tracks) with counts + profile image/bio.
@@ -435,7 +435,7 @@ export const getArtists = cacheFn(
   }
   },
   ["artists"],
-  { revalidate: 30 }
+  { revalidate: 30, tags: ["tracks", "artists"] }
 );
 
 // Single artist's profile + counts (null if the artist has no tracks).
@@ -481,7 +481,7 @@ export const getCategoryCounts = cacheFn(
     }
   },
   ["category-counts"],
-  { revalidate: 30 }
+  { revalidate: 30, tags: ["tracks"] }
 );
 
 // List every album (derived from tracks) with its resolved cover + source.
@@ -530,7 +530,7 @@ export const getAlbums = cacheFn(
   }
   },
   ["albums"],
-  { revalidate: 30 }
+  { revalidate: 30, tags: ["tracks", "albums"] }
 );
 
 // Realtime stats for the profile header: when the account was created and the

@@ -14,6 +14,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -100,15 +101,13 @@ var defaultURL = "http://localhost:3000"
 func main() {
 	url := flag.String("url", envOr("ZENIFY_URL", defaultURL),
 		"URL of the online Zenify web app to load")
-	dynamicCover := flag.Bool("dynamic-cover", false,
-		"pass the album cover URL to Discord instead of the static zenify_logo asset "+
-			"(only useful once covers are served from a stable public CDN)")
+
 	debug := flag.Bool("debug", false, "open the webview devtools")
 	flag.Parse()
 
 	// The worker owns the Discord connection so the UI thread never blocks on IPC.
 	updates := make(chan presence, 1)
-	go discordWorker(updates, *dynamicCover)
+	go discordWorker(updates)
 
 	// webview_create() shows its window and pumps the message loop while WebView2
 	// initialises (async) — painting a blank WHITE frame for the whole init. That
@@ -124,6 +123,7 @@ func main() {
 	defer w.Destroy()
 	w.SetTitle("Zenify")
 	w.SetSize(1100, 720, webview.HintNone)
+	w.SetSize(520, 400, webview.HintMin)
 
 	// Frameless dark window + embedded app icon (Windows only; no-op elsewhere).
 	hwnd := uintptr(w.Window())
@@ -152,6 +152,18 @@ func main() {
 	// app needs no changes.
 	w.Init(titlebarJS)
 
+	// Forward media key presses (captured by WM_APPCOMMAND in the wndProc) to the
+	// web page as zenify:mediakey CustomEvents so the player can react to hardware
+	// Play/Pause, Next, Prev, and Stop buttons.
+	go func() {
+		for action := range mediaKeyCh {
+			a := action
+			w.Dispatch(func() {
+				w.Eval(`try{window.dispatchEvent(new CustomEvent('zenify:mediakey',{detail:'` + a + `'}))}catch(_){}`)
+			})
+		}
+	}()
+
 	w.Navigate(*url)
 	w.Run()
 }
@@ -175,7 +187,7 @@ func send(ch chan presence, p presence) {
 // discordWorker connects lazily (Discord may not be running yet) and applies
 // each presence update. On any IPC error it drops the connection and reconnects
 // on the next update, throttled by a short backoff.
-func discordWorker(updates <-chan presence, dynamicCover bool) {
+func discordWorker(updates <-chan presence) {
 	connected := false
 	var lastTry time.Time
 
@@ -200,7 +212,7 @@ func discordWorker(updates <-chan presence, dynamicCover bool) {
 		if !ensure() {
 			continue
 		}
-		if err := setActivity(buildActivity(p, dynamicCover)); err != nil {
+		if err := setActivity(buildActivity(p)); err != nil {
 			log.Printf("discord: SetActivity failed (%v) — will reconnect", err)
 			connected = false
 		}
@@ -210,7 +222,7 @@ func discordWorker(updates <-chan presence, dynamicCover bool) {
 // buildActivity maps a now-playing snapshot to a Discord activity. Discord
 // requires any present details/state string to be 2–128 chars; shorter values
 // are omitted rather than rejected.
-func buildActivity(p presence, _ bool) *dcActivity {
+func buildActivity(p presence) *dcActivity {
 	// Fetch a stable public cover URL from iTunes so Discord can display album
 	// art without needing a custom CDN. Falls back to the static zenify_logo asset.
 	large := assetLogo
@@ -279,18 +291,28 @@ func setActivity(act *dcActivity) error {
 	if err != nil {
 		return err
 	}
-	ipc.Send(1, string(payload)) // opcode 1 = FRAME
+	resp := ipc.Send(1, string(payload)) // opcode 1 = FRAME
+	// ipc.Send swallows socket errors internally (prints to stdout). An empty
+	// response or one containing an ERROR event means the pipe is broken or
+	// Discord rejected the payload — either way the caller should reconnect.
+	if resp == "" {
+		return fmt.Errorf("empty IPC response (socket likely closed)")
+	}
+	if strings.Contains(resp, `"ERROR"`) {
+		return fmt.Errorf("discord error: %s", resp)
+	}
 	return nil
 }
 
 // clamp returns s only if it satisfies Discord's 2–128 char rule, else "".
 func clamp(s string) string {
 	s = strings.TrimSpace(s)
-	if len(s) < 2 {
+	runes := []rune(s)
+	if len(runes) < 2 {
 		return ""
 	}
-	if len(s) > 128 {
-		return s[:128]
+	if len(runes) > 128 {
+		return string(runes[:128])
 	}
 	return s
 }

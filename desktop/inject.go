@@ -68,6 +68,7 @@ window.addEventListener('zenify:nowplaying', function (e) {
     bar.id = 'zenify-titlebar';
     bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:32px;z-index:2147483647;display:flex;align-items:center;justify-content:space-between;background:#0a0c11;border-bottom:1px solid rgba(255,255,255,.08);color:#9aa3af;user-select:none;font-family:system-ui,Segoe UI,sans-serif';
     bar.onmousedown = function(){ call('winDragStart'); };
+    bar.ondblclick = function(){ call('winToggleMaximize'); };
 
     // Left: back / forward nav
     var navBtn = 'height:28px;width:28px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;border-radius:6px;color:#9aa3af;cursor:default;transition:background .15s,color .15s;-webkit-app-region:no-drag;padding:0';
@@ -93,16 +94,18 @@ window.addEventListener('zenify:nowplaying', function (e) {
     leftZone.appendChild(fwd);
     bar.appendChild(leftZone);
 
-    // Center: logo + name
+    // Center: logo + app name + current page
     var center = document.createElement('div');
-    center.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:7px;pointer-events:none';
+    center.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:7px;pointer-events:auto;-webkit-app-region:no-drag;cursor:default';
+    center.onmousedown = function(e){ e.stopPropagation(); };
     center.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="#14b8a6">' +
       '<rect x="2.5" y="8" width="2.6" height="8" rx="1.3"/>' +
       '<rect x="6.6" y="5.5" width="2.6" height="13" rx="1.3"/>' +
       '<rect x="10.7" y="3.5" width="2.6" height="17" rx="1.3"/>' +
       '<rect x="14.8" y="6.5" width="2.6" height="11" rx="1.3"/>' +
       '<rect x="18.9" y="8.5" width="2.6" height="7" rx="1.3"/></svg>' +
-      '<span style="font-size:12px;font-weight:600;letter-spacing:.04em;color:#e2e8f0">Zenify</span>';
+      '<span style="font-size:12px;font-weight:600;letter-spacing:.04em;color:#e2e8f0">Zenify</span>' +
+      '<span id="zenify-page-label" style="font-size:11px;font-weight:500;color:#64748b"></span>';
     bar.appendChild(center);
 
     var ctr = document.createElement('div');
@@ -127,5 +130,58 @@ window.addEventListener('zenify:nowplaying', function (e) {
   }
   // Safety net in case a client-side route change wipes the node.
   setInterval(inject, 1000);
+
+  // Update the page label in the titlebar whenever the route changes.
+  function getPageName(){
+    var p = location.pathname;
+    if (p === '/') return 'Home';
+    if (p === '/favorites') return 'Favorites';
+    if (p === '/settings') return 'Settings';
+    if (p === '/profile') return 'Profile';
+    if (p === '/songs') return 'Songs';
+    if (p === '/albums') return 'Albums';
+    if (p === '/artists') return 'Artists';
+    if (p === '/playlists') return 'Playlists';
+    if (p === '/admin') return 'Admin';
+    if (p.indexOf('/album/') === 0) return 'Album';
+    if (p.indexOf('/artist/') === 0) return 'Artist';
+    if (p === '/login') return 'Login';
+    if (p === '/signup') return 'Sign Up';
+    var seg = p.split('/')[1];
+    return seg ? seg.charAt(0).toUpperCase() + seg.slice(1) : '';
+  }
+  var lastPagePath = '';
+  function updatePage(){
+    if (location.pathname === lastPagePath) return;
+    lastPagePath = location.pathname;
+    var el = document.getElementById('zenify-page-label');
+    if (el) {
+      var name = getPageName();
+      el.textContent = name ? '\u2014 ' + name : '';
+    }
+  }
+  setInterval(updatePage, 300);
+  updatePage();
 })();
+
+// Forward hardware media-key events (Play/Pause, Next, Prev) to the player by
+// clicking the matching button in the DOM. The Go side captures WM_APPCOMMAND
+// and dispatches 'zenify:mediakey' CustomEvents with detail = action name.
+window.addEventListener('zenify:mediakey', function (e) {
+  var map = {
+    'play-pause': '[aria-label="Play"],[aria-label="Pause"]',
+    'next':       '[aria-label="Next track"]',
+    'prev':       '[aria-label="Previous track"]',
+    'stop':       '[aria-label="Pause"]'
+  };
+  var sel = map[e.detail];
+  if (!sel) return;
+  // Find a visible (non-hidden) button matching the selector.
+  var btns = document.querySelectorAll(sel);
+  for (var i = 0; i < btns.length; i++) {
+    if (btns[i].offsetParent !== null) { btns[i].click(); return; }
+  }
+  // Fallback: click the first match even if visibility check failed.
+  if (btns.length) btns[0].click();
+});
 `
