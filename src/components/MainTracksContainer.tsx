@@ -119,7 +119,9 @@ export default function MainTracksContainer({
   });
   const playlists: { id: string; name: string }[] = playlistData?.playlists || [];
 
-  const displayTracks: Track[] = data?.tracks || initialTracks;
+  // When browsing a category, SWR fetches fresh data from the API; otherwise
+  // (search results or homepage) we use the tracks passed in directly.
+  const displayTracks: Track[] = url ? (data?.tracks || initialTracks) : initialTracks;
 
   // Render ~40 rows first; reveal more as the user scrolls (keeps the DOM light
   // for large libraries). The full array is still handed to the player below.
