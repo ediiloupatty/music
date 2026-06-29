@@ -44,12 +44,20 @@ export async function GET(
   }
 
   try {
-    const range = request.headers.get("range");
+    const rawRange = request.headers.get("range");
+
+    // Force initial chunking (1MB) if the browser requests the entire file or omits Range.
+    // This prevents downloading the entire 30MB-100MB FLAC/WAV file before playback begins,
+    // ensuring lightning-fast Time-To-First-Byte (TTFB) and instant audio playback.
+    let rangeParam = rawRange;
+    if (!rawRange || rawRange === "bytes=0-") {
+      rangeParam = "bytes=0-1048575"; // 1MB initial chunk
+    }
 
     const command = new GetObjectCommand({
       Bucket: bucketName,
       Key: key,
-      ...(range ? { Range: range } : {}),
+      ...(rangeParam ? { Range: rangeParam } : {}),
     });
 
     const response = await r2Client.send(command);
@@ -64,7 +72,7 @@ export async function GET(
     const webStream = body.transformToWebStream();
 
     // Range response (206)
-    if (range && response.ContentRange) {
+    if (rangeParam && response.ContentRange) {
       return new NextResponse(webStream, {
         status: 206,
         headers: {
