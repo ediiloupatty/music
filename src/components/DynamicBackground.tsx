@@ -62,10 +62,16 @@ export default function DynamicBackground() {
             backgroundImage: `url(${bgImage})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
-            filter: "blur(140px)",
-            transform: "scale(1.5)",
+            // The source is already a 32px thumbnail upscaled to fill the screen,
+            // so it's extremely soft to begin with — a 60px blur looks identical
+            // to the old 140px but costs the compositor a fraction as much.
+            filter: "blur(60px)",
+            transform: "scale(1.4)",
             opacity: 0.45,
-            willChange: "transform, filter, opacity",
+            // No `willChange` here: it pinned this element to a permanently-live
+            // GPU layer that kept re-compositing even while idle (a constant drain
+            // while gaming). Without it the blurred layer is painted once and
+            // cached; the 1.5s cross-track fade still runs fine.
           }}
         />
       )}

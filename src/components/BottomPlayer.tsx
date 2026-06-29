@@ -9,6 +9,7 @@ import QueuePanel from "@/components/QueuePanel";
 import { useCoverColor } from "@/lib/useCoverColor";
 import CoverImage from "@/components/CoverImage";
 import { cleanTitle } from "@/lib/cleanTitle";
+import { isRenderingActive, onRenderingActiveChange } from "@/lib/renderGate";
 import { formatAudioSpecs } from "@/lib/formatSpecs";
 import { saveDurationAction } from "@/app/admin/actions";
 
@@ -429,8 +430,10 @@ export default function BottomPlayer() {
 
     const scheduleNext = (audio: HTMLAudioElement | null) => {
       if (!active) return;
-      // Back off to 500 ms when paused or tab is hidden
-      if (!audio || audio.paused || document.hidden) {
+      // Back off to 500 ms when paused, the tab is hidden, or the browser window
+      // has lost focus (e.g. a game is in front) — no point sweeping lyrics the
+      // user can't see, and it frees the GPU/CPU for whatever's in front.
+      if (!audio || audio.paused || !isRenderingActive()) {
         backoffId = setTimeout(() => {
           backoffId = null;
           if (active) rafId = requestAnimationFrame(tick);
@@ -445,7 +448,7 @@ export default function BottomPlayer() {
       const container = lyricsContainerRef.current;
       const audio     = audioRef.current;
 
-      if (lyrics && audio && !audio.paused && !document.hidden) {
+      if (lyrics && audio && !audio.paused && isRenderingActive()) {
         // Compensate for audio output latency: the sound the user HEARS right now
         // corresponds to playback position (currentTime - outputLatency), since the
         // buffer at currentTime hasn't reached the speakers yet. This auto-corrects
@@ -560,21 +563,22 @@ export default function BottomPlayer() {
       scheduleNext(audioRef.current);
     };
 
-    // When the tab becomes visible again, resume full-rate RAF immediately
-    const onVisibilityChange = () => {
-      if (!document.hidden && active) {
-        if (backoffId !== null) { clearTimeout(backoffId); backoffId = null; }
+    // When the tab becomes visible / the window regains focus, kick the loop back
+    // to full rate — but only if it was parked in a backoff poll, to avoid
+    // scheduling a duplicate RAF on top of an already-running one.
+    const stopGate = onRenderingActiveChange(() => {
+      if (isRenderingActive() && active && backoffId !== null) {
+        clearTimeout(backoffId); backoffId = null;
         rafId = requestAnimationFrame(tick);
       }
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
+    });
 
     rafId = requestAnimationFrame(tick);
     return () => {
       active = false;
       cancelAnimationFrame(rafId);
       if (backoffId !== null) clearTimeout(backoffId);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopGate();
     };
   }, []);
 
@@ -1035,8 +1039,11 @@ export default function BottomPlayer() {
     const scheduleNext = () => {
       if (!active) return;
       const audio = audioRef.current;
-      // Pause the visualiser when audio is idle or the tab is backgrounded
-      if (!audio || audio.paused || document.hidden) {
+      // Pause the visualiser when audio is idle, the tab is backgrounded, or the
+      // browser window has lost focus (e.g. a game is in front). This is the big
+      // one for gaming: a borderless game leaves document.hidden false, so without
+      // the focus check the canvas keeps redrawing at 60fps behind the game.
+      if (!audio || audio.paused || !isRenderingActive()) {
         backoffId = setTimeout(() => {
           backoffId = null;
           if (active) animationFrame = requestAnimationFrame(renderFrame);
@@ -1093,21 +1100,21 @@ export default function BottomPlayer() {
       scheduleNext();
     };
 
-    // Resume immediately when the tab becomes visible
-    const onVisibilityChange = () => {
-      if (!document.hidden && active) {
-        if (backoffId !== null) { clearTimeout(backoffId); backoffId = null; }
+    // Resume immediately when the tab becomes visible / window regains focus,
+    // but only out of a parked backoff to avoid stacking a duplicate RAF.
+    const stopGate = onRenderingActiveChange(() => {
+      if (isRenderingActive() && active && backoffId !== null) {
+        clearTimeout(backoffId); backoffId = null;
         animationFrame = requestAnimationFrame(renderFrame);
       }
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
+    });
 
     animationFrame = requestAnimationFrame(renderFrame);
     return () => {
       active = false;
       cancelAnimationFrame(animationFrame);
       if (backoffId !== null) clearTimeout(backoffId);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopGate();
     };
   }, [isExpanded, coverColor, isPlaying, duration, progress]);
 
