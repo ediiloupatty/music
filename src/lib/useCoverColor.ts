@@ -4,15 +4,23 @@ import { useEffect, useState } from "react";
 
 export type RGB = { r: number; g: number; b: number };
 
+// Global in-memory cache to prevent re-fetching and re-calculating canvas pixels
+// for cover URLs that have already been processed in the session.
+const colorCache = new Map<string, RGB | null>();
+
 // Extracts a vibrant dominant colour from a cover image so the UI can tint
 // itself to match the artwork (covers are served cross-origin via R2, which
 // sends the CORS headers canvas pixel reading needs).
 export function useCoverColor(coverUrl?: string): RGB | null {
-  const [color, setColor] = useState<RGB | null>(null);
+  const [color, setColor] = useState<RGB | null>(() => (coverUrl ? (colorCache.get(coverUrl) ?? null) : null));
 
   useEffect(() => {
     if (!coverUrl) {
       setColor(null);
+      return;
+    }
+    if (colorCache.has(coverUrl)) {
+      setColor(colorCache.get(coverUrl) ?? null);
       return;
     }
     let cancelled = false;
@@ -57,14 +65,20 @@ export function useCoverColor(coverUrl?: string): RGB | null {
 
         // Fall back to the average colour if nothing vibrant was found.
         const chosen = best.score > 0.12 ? best : { r: sr / n, g: sg / n, b: sb / n };
+        const finalColor = { r: Math.round(chosen.r), g: Math.round(chosen.g), b: Math.round(chosen.b) };
+        colorCache.set(coverUrl, finalColor);
         if (!cancelled) {
-          setColor({ r: Math.round(chosen.r), g: Math.round(chosen.g), b: Math.round(chosen.b) });
+          setColor(finalColor);
         }
       } catch {
         /* tainted canvas / decode error — keep the previous/null colour */
+        colorCache.set(coverUrl, null);
       }
     };
-    img.onerror = () => { if (!cancelled) setColor(null); };
+    img.onerror = () => {
+      colorCache.set(coverUrl, null);
+      if (!cancelled) setColor(null);
+    };
 
     return () => { cancelled = true; };
   }, [coverUrl]);
