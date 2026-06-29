@@ -28,7 +28,10 @@ export async function GET(
   { params }: { params: Promise<{ filename: string[] }> }
 ) {
   const { filename } = await params;
-  const key = (filename || []).join("/");
+  let key = (filename || []).join("/");
+  try {
+    key = decodeURIComponent(key);
+  } catch {}
   const bucketName = process.env.R2_BUCKET_NAME || "music";
 
   // Basic referer check — skip for audio since the <audio> element with
