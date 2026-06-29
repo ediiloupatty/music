@@ -69,16 +69,16 @@ export default function PlaylistSection({
     const res = await deletePlaylistAction(playlist.id);
     setDeletingId(null);
     if (res.success) {
-      if (currentCategory === playlist.name) router.push("/");
+      if (currentCategory === playlist.name) router.push("/player");
       mutate();
     }
   }
 
   function togglePlaylist(pl: Playlist) {
     if (currentCategory === pl.name) {
-      router.push("/");
+      router.push("/player");
     } else {
-      router.push(`/?category=${encodeURIComponent(pl.name)}`);
+      router.push(`/player?category=${encodeURIComponent(pl.name)}`);
     }
   }
 

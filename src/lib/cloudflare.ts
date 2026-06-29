@@ -1,6 +1,5 @@
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import { unstable_cache } from "next/cache";
-import * as mm from "music-metadata";
 import {
   USE_MOCK_DATA as USE_MOCK,
   MOCK_TRACKS, MOCK_ALBUMS, MOCK_ARTISTS, MOCK_PLAYLISTS, MOCK_CATEGORY_COUNTS,
@@ -294,70 +293,14 @@ function normalizeTrack(t: any): Track {
 }
 
 async function normalizeTracks(rows: any[]): Promise<Track[]> {
-  const bucketName = process.env.R2_BUCKET_NAME || "zenify";
-  const results: Track[] = [];
-
-  // Process in chunks of 5 to avoid overwhelming R2 / D1 on initial library loads
-  const chunkSize = 5;
-  for (let i = 0; i < rows.length; i += chunkSize) {
-    const chunk = rows.slice(i, i + chunkSize);
-    const chunkTracks = await Promise.all(
-      chunk.map(async (t) => {
-        let bit_depth = t.bit_depth;
-        let sample_rate = t.sample_rate;
-
-        if ((bit_depth == null || sample_rate == null) && t.file_url) {
-          try {
-            const filename = r2KeyFromUrl(t.file_url) || t.file_url.split("/").pop();
-            if (filename) {
-              const obj = await r2Client.send(
-                new GetObjectCommand({
-                  Bucket: bucketName,
-                  Key: filename,
-                  // 64KB is sufficient for music-metadata to parse headers (flac/wav/mp3),
-                  // reducing bandwidth and latency by 87% compared to 512KB.
-                  Range: "bytes=0-65535",
-                })
-              );
-              if (obj.Body) {
-                const bytes = await obj.Body.transformToByteArray();
-                const buffer = Buffer.from(bytes);
-                const metadata = await mm.parseBuffer(buffer, undefined, { duration: false });
-                const f = metadata.format;
-                if (f.bitsPerSample != null) bit_depth = f.bitsPerSample;
-                if (f.sampleRate != null) sample_rate = f.sampleRate;
-              }
-            }
-          } catch (err: any) {
-            if (err?.Code !== "NoSuchKey") {
-              console.warn(`[R2] Failed to parse specs for track ${t.id}:`, err?.message || err);
-            }
-          }
-
-          if (bit_depth == null) bit_depth = t.file_url?.includes(".flac") ? 24 : 16;
-          if (sample_rate == null) sample_rate = t.file_url?.includes(".flac") ? 48000 : 44100;
-
-          // Permanently update D1 with either parsed specs or fallback specs so future queries are instant
-          await queryD1(`UPDATE tracks SET bit_depth = ?, sample_rate = ? WHERE id = ?`, [
-            bit_depth,
-            sample_rate,
-            t.id,
-          ], { silent: true }).catch(() => {});
-        }
-
-        return {
-          ...t,
-          bit_depth,
-          sample_rate,
-          file_url: toProxyUrl(t.file_url, "audio") ?? t.file_url,
-          cover_url: toProxyUrl(t.cover_url, "cover"),
-        };
-      })
-    );
-    results.push(...chunkTracks);
-  }
-
-  return results;
+  // Pure, synchronous URL normalization — no per-track R2 reads. Earlier this
+  // function fanned out a 64KB R2 GET (plus a D1 write) for every track missing
+  // audio specs, so loading any list cost dozens of small round-trips on a cold
+  // library. Specs now come straight from the DB (written at upload time and by
+  // the admin backfill in app/admin/actions.ts); when a row has none, the player
+  // falls back to a format-based heuristic (see BottomPlayer / QueuePanel). That
+  // keeps list loads to a single D1 query with zero R2 traffic.
+  return rows.map(normalizeTrack);
 }
 
 // Fetch tracks based on category or fetch all if none provided

@@ -205,7 +205,7 @@ export default function BottomPlayer() {
     // Pass the track duration so the API can match the correct version on
     // lrclib (and reject wrong-song search hits of a different length).
     const dur = Math.round(currentTrack.duration || audioRef.current?.duration || 0);
-    const url = `/api/lyrics?artist=${encodeURIComponent(currentTrack.artist || '')}&title=${encodeURIComponent(cleanedTitle)}&q=${encodeURIComponent(`${currentTrack.artist || ''} ${cleanedTitle}`.trim())}${dur > 0 ? `&duration=${dur}` : ''}&t=${Date.now()}`;
+    const url = `/api/lyrics?id=${encodeURIComponent(currentTrack.id)}&artist=${encodeURIComponent(currentTrack.artist || '')}&title=${encodeURIComponent(cleanedTitle)}&q=${encodeURIComponent(`${currentTrack.artist || ''} ${cleanedTitle}`.trim())}${dur > 0 ? `&duration=${dur}` : ''}&t=${Date.now()}`;
 
     fetch(url, { signal: controller.signal })
       .then(res => res.json())
