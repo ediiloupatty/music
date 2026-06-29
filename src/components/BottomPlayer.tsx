@@ -1358,8 +1358,7 @@ export default function BottomPlayer() {
         /*  MINI PLAYER (bottom bar)                                          */
         /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
         <div 
-          className="fixed bottom-[4.8rem] md:bottom-0 left-2 right-2 md:left-0 md:right-0 w-[calc(100%-1rem)] md:w-full h-auto min-h-[5.5rem] py-3 md:py-0 md:h-24 rounded-2xl md:rounded-none border border-white/15 md:border-t md:border-b-0 md:border-l-0 md:border-r-0 md:border-white/10 px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-40 gap-3 md:gap-0 cursor-pointer backdrop-blur-2xl transition-all shadow-[0_12px_40px_rgba(0,0,0,0.65)] hover:border-white/25"
-          style={{ background: `linear-gradient(135deg, rgba(30,35,48,0.85) 0%, rgba(15,20,30,0.85) 100%)` }}
+          className="glass-panel fixed bottom-[4.8rem] md:bottom-0 left-2 right-2 md:left-0 md:right-0 w-[calc(100%-1rem)] md:w-full h-auto min-h-[5.5rem] py-3 md:py-0 md:h-24 rounded-2xl md:rounded-none border border-white/15 md:border-t md:border-b-0 md:border-l-0 md:border-r-0 md:border-white/10 px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-40 gap-3 md:gap-0 cursor-pointer backdrop-blur-2xl transition-all shadow-[0_12px_40px_rgba(0,0,0,0.65)] hover:border-white/25"
           onContextMenu={(e) => e.preventDefault()}
           onClick={() => setIsExpanded(true)}
         >
