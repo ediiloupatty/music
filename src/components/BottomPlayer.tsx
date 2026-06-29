@@ -852,6 +852,10 @@ export default function BottomPlayer() {
     `radial-gradient(120% 75% at 50% -10%, rgba(${cc.r}, ${cc.g}, ${cc.b}, 0.42), transparent 55%),` +
     `linear-gradient(180deg, rgba(${cc.r}, ${cc.g}, ${cc.b}, 0.16) 0%, #0a0c11 62%)`;
 
+  const bd = currentTrack.bit_depth || (currentTrack.file_url?.endsWith(".flac") || currentTrack.file_url?.endsWith(".wav") ? 24 : 16);
+  const sr = currentTrack.sample_rate || (currentTrack.file_url?.endsWith(".wav") ? 96000 : currentTrack.file_url?.endsWith(".flac") ? 48000 : 44100);
+  const srStr = (sr / 1000).toFixed(sr % 1000 === 0 ? 0 : 1);
+
   return (
     <>
       <audio
@@ -873,9 +877,7 @@ export default function BottomPlayer() {
         coverColor={cc}
       />
 
-      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-      {/*  EXPANDED PLAYER                                                   */}
-      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+      {/* ─── EXPANDED PLAYER ─────────────────────────────────────────── */}
       {isExpanded ? (
         <div
           className="fixed inset-0 h-screen w-screen z-[100] flex flex-col backdrop-blur-3xl overflow-hidden"
@@ -895,7 +897,7 @@ export default function BottomPlayer() {
             />
           )}
           
-          {/* â”€â”€ TOP BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+          {/* ─── TOP BAR ─────────────────────────────────────────────── */}
           <div className="relative z-10 flex items-center justify-between px-5 pb-2 flex-shrink-0" style={{ paddingTop: desktopOffset > 0 ? desktopOffset + 10 : 20 }}>
             {/* Close */}
             <button 
@@ -927,10 +929,10 @@ export default function BottomPlayer() {
             </button>
           </div>
 
-          {/* â”€â”€ DESKTOP: side-by-side, MOBILE: tabbed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+          {/* ─── DESKTOP: side-by-side, MOBILE: tabbed ─────────────────── */}
           <div className="relative z-10 flex-1 flex flex-col lg:flex-row overflow-hidden">
 
-            {/* â”€â”€ MOBILE TAB SWITCHER (only when lyrics exist) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* ─── MOBILE TAB SWITCHER (only when lyrics exist) ──────────── */}
             {hasLyrics && (
               <div className="lg:hidden flex items-center bg-white/5 mx-5 rounded-xl p-1 gap-1 flex-shrink-0 mb-2">
                 <button
@@ -949,45 +951,44 @@ export default function BottomPlayer() {
               </div>
             )}
 
-            {/* â”€â”€ PLAYER PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* ─── PLAYER PANEL ─────────────────────────────────────────── */}
             {/* LEFT: track info + actions (desktop) */}
-            <div className="hidden lg:flex lg:flex-col lg:justify-center lg:w-[30%] xl:w-[26%] flex-shrink-0 px-10 gap-4">
-              <h2 className="font-black text-4xl xl:text-5xl text-white leading-[1.05] tracking-tight drop-shadow-lg">
+            <div className="hidden lg:flex lg:flex-col lg:justify-center lg:w-[30%] xl:w-[26%] flex-shrink-0 px-10 gap-2">
+              <h2 className="font-black text-4xl xl:text-5xl text-white leading-[1.05] tracking-tight drop-shadow-lg mb-1">
                 {cleanTitle(currentTrack.title)}
               </h2>
               {currentTrack.artist ? (
-                <Link href={`/artist/${encodeURIComponent(currentTrack.artist)}`} onClick={() => setIsExpanded(false)} className="text-lg font-semibold hover:underline w-fit" style={{ color: accent }}>
+                <Link href={`/artist/${encodeURIComponent(currentTrack.artist)}`} onClick={() => setIsExpanded(false)} className="text-xl font-bold hover:underline w-fit mb-1" style={{ color: accent }}>
                   {currentTrack.artist}
                 </Link>
               ) : (
-                <p className="text-lg font-semibold" style={{ color: accent }}>{currentTrack.category}</p>
+                <p className="text-xl font-bold mb-1" style={{ color: accent }}>{currentTrack.category}</p>
               )}
               {(currentTrack.album || currentTrack.year) && (
-                <p className="text-sm text-slate-400 -mt-2">
+                <p className="text-sm text-slate-300 mb-2 font-medium leading-snug">
                   {currentTrack.album}{currentTrack.album && currentTrack.year ? "  ·  " : ""}{currentTrack.year || ""}
                 </p>
               )}
-              {/* Hi-Res badges */}
-              {(currentTrack.bit_depth || currentTrack.sample_rate) && (
-                <div className="flex items-center gap-2 mt-1">
-                  {currentTrack.bit_depth && (
-                    <span className="px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider border" style={{ color: accent, borderColor: accentSoft, background: `rgba(${cc.r},${cc.g},${cc.b},0.12)` }}>{currentTrack.bit_depth}-bit</span>
-                  )}
-                  {currentTrack.sample_rate && (
-                    <span className="px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider border" style={{ color: accent, borderColor: accentSoft, background: `rgba(${cc.r},${cc.g},${cc.b},0.12)` }}>{currentTrack.sample_rate / 1000}kHz</span>
-                  )}
+              {/* Reference Hi-Res badge */}
+              <div className="flex items-center rounded-md overflow-hidden w-fit my-2 shadow-md">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#0d9488" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M11 3v18h2V3h-2zM7 7v10h2V7H7zm8 2v6h2V9h-2zM3 10v4h2v-4H3zm16 1v2h2v-2h-2z"/></svg>
+                  <span>{bd}-bit</span>
                 </div>
-              )}
-              {/* Actions */}
-              <div className="flex items-center gap-3 mt-3">
-                <button onClick={() => setLiked((v) => !v)} className="w-11 h-11 rounded-full flex items-center justify-center transition-all active:scale-90" style={{ background: liked ? accentFill : "rgba(255,255,255,0.08)", color: liked ? "#fff" : "#cbd5e1" }} title="Like">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                <div className="px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#4338ca" }}>
+                  {srStr} kHz
+                </div>
+              </div>
+              {/* Clean Minimalist Actions */}
+              <div className="flex items-center gap-7 mt-4">
+                <button onClick={() => setLiked((v) => !v)} className="transition-all active:scale-90 hover:scale-110" style={{ color: liked ? accentFill : "#94a3b8" }} title="Like">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                 </button>
-                <button className="w-11 h-11 rounded-full flex items-center justify-center bg-white/[0.08] text-slate-300 hover:text-white transition-all active:scale-90" title="Add to playlist">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                <button className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110" title="Add to playlist">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
                 </button>
-                <button className="w-11 h-11 rounded-full flex items-center justify-center bg-white/[0.08] text-slate-300 hover:text-white transition-all active:scale-90" title="More">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                <button className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110" title="More">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
                 </button>
               </div>
             </div>
@@ -1007,17 +1008,44 @@ export default function BottomPlayer() {
               </div>
 
               {/* Mobile-only meta (left column is desktop-only) */}
-              <div className="lg:hidden w-full text-center mt-4 mb-2 px-2">
+              <div className="lg:hidden w-full flex flex-col items-center text-center mt-4 mb-2 px-4">
                 <h2 className="font-black text-2xl text-white leading-tight tracking-tight mb-1">
                   {cleanTitle(currentTrack.title)}
                 </h2>
                 {currentTrack.artist ? (
-                  <Link href={`/artist/${encodeURIComponent(currentTrack.artist)}`} onClick={() => setIsExpanded(false)} className="text-base font-semibold hover:underline" style={{ color: accent }}>
+                  <Link href={`/artist/${encodeURIComponent(currentTrack.artist)}`} onClick={() => setIsExpanded(false)} className="text-base font-bold hover:underline mb-1" style={{ color: accent }}>
                     {currentTrack.artist}
                   </Link>
                 ) : (
-                  <p className="text-base font-semibold" style={{ color: accent }}>{currentTrack.category}</p>
+                  <p className="text-base font-bold mb-1" style={{ color: accent }}>{currentTrack.category}</p>
                 )}
+                {(currentTrack.album || currentTrack.year) && (
+                  <p className="text-xs text-slate-300 mb-2 font-medium leading-snug max-w-[85%]">
+                    {currentTrack.album}{currentTrack.album && currentTrack.year ? "  ·  " : ""}{currentTrack.year || ""}
+                  </p>
+                )}
+                {/* Reference Hi-Res badge */}
+                <div className="flex items-center rounded-md overflow-hidden w-fit my-2 shadow-md">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#0d9488" }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M11 3v18h2V3h-2zM7 7v10h2V7H7zm8 2v6h2V9h-2zM3 10v4h2v-4H3zm16 1v2h2v-2h-2z"/></svg>
+                    <span>{bd}-bit</span>
+                  </div>
+                  <div className="px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#4338ca" }}>
+                    {srStr} kHz
+                  </div>
+                </div>
+                {/* Clean Minimalist Actions */}
+                <div className="flex items-center gap-8 mt-3 mb-2">
+                  <button onClick={() => setLiked((v) => !v)} className="transition-all active:scale-90 hover:scale-110" style={{ color: liked ? accentFill : "#94a3b8" }} title="Like">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                  </button>
+                  <button className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110" title="Add to playlist">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                  </button>
+                  <button className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110" title="More">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                  </button>
+                </div>
               </div>
 
               {/* â”€â”€ PROGRESS BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
