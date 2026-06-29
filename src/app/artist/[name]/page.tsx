@@ -9,6 +9,7 @@ import {
 import ArtistView from "@/components/ArtistView";
 import Sidebar from "@/components/Sidebar";
 import DynamicBackground from "@/components/DynamicBackground";
+import QueueAwareMain from "@/components/QueueAwareMain";
 import { hashString, PALETTES } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +83,7 @@ export default async function ArtistPage({
       <Sidebar />
 
       {/* ── MAIN AREA ── */}
-      <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
+      <QueueAwareMain className="relative z-10 flex-1 flex flex-col overflow-hidden">
         <ArtistView
           name={name}
           info={info}
@@ -96,7 +97,7 @@ export default async function ArtistPage({
           c1={c1}
           c2={c2}
         />
-      </div>
+      </QueueAwareMain>
     </div>
   );
 }

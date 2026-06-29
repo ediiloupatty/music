@@ -4,6 +4,7 @@ import { getTracksByAlbum, getUserFavorites } from "@/lib/cloudflare";
 import Sidebar from "@/components/Sidebar";
 import DynamicBackground from "@/components/DynamicBackground";
 import AlbumDetail from "@/components/AlbumDetail";
+import QueueAwareMain from "@/components/QueueAwareMain";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export default async function AlbumPage({
       <DynamicBackground />
       <Sidebar />
 
-      <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
+      <QueueAwareMain className="relative z-10 flex-1 flex flex-col overflow-hidden">
         <AlbumDetail
           name={name}
           tracks={tracks}
@@ -61,7 +62,7 @@ export default async function AlbumPage({
           userFavorites={userFavorites}
           isLoggedIn={isLoggedIn}
         />
-      </div>
+      </QueueAwareMain>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import DynamicBackground from "@/components/DynamicBackground";
+import QueueAwareMain from "@/components/QueueAwareMain";
 
 // Shared shell for the full-list "View all" pages (albums / artists / playlists /
 // songs). Keeps the same sidebar + backdrop as the home page.
@@ -13,7 +14,7 @@ export default function BrowseShell({ children }: { children: React.ReactNode })
       <DynamicBackground />
       <Sidebar />
 
-      <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
+      <QueueAwareMain className="relative z-10 flex-1 flex flex-col overflow-hidden">
         <header className="flex items-center gap-4 px-5 md:px-8 pt-6 pb-2 flex-shrink-0">
           <Link
             href="/"
@@ -30,7 +31,7 @@ export default function BrowseShell({ children }: { children: React.ReactNode })
         <div className="flex-1 overflow-y-auto px-5 md:px-8 pt-2 pb-44">
           {children}
         </div>
-      </div>
+      </QueueAwareMain>
     </div>
   );
 }

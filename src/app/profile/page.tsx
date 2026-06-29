@@ -4,6 +4,7 @@ import Sidebar from "@/components/Sidebar";
 import { getUserFavorites, getUserStats, getTracksByCategory, getRecentlyPlayed, getPlaylists } from "@/lib/cloudflare";
 import CompactTrackList from "@/components/CompactTrackList";
 import PlaylistGrid from "@/components/PlaylistGrid";
+import QueueAwareMain from "@/components/QueueAwareMain";
 import { hashString, PALETTES } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -83,7 +84,7 @@ export default async function ProfilePage() {
       <Sidebar currentCategory={null} />
 
       {/* ─── MAIN AREA ────────────────────────────────────────────── */}
-      <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
+      <QueueAwareMain className="relative z-10 flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto pb-44" style={{ background: "var(--bg-base)" }}>
           {/* ── Back button ── */}
       <div className="absolute top-5 left-5 z-30">
@@ -234,7 +235,7 @@ export default async function ProfilePage() {
         </div>
       </div>
         </div>
-      </div>
+      </QueueAwareMain>
     </div>
   );
 }
