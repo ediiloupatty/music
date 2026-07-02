@@ -11,7 +11,7 @@ import CoverImage from "@/components/CoverImage";
 import { cleanTitle } from "@/lib/cleanTitle";
 import { isRenderingActive, onRenderingActiveChange } from "@/lib/renderGate";
 import { formatAudioSpecs } from "@/lib/formatSpecs";
-import { useStreamQuality, withQuality } from "@/lib/useStreamQuality";
+import { useStreamQuality, withQuality, type StreamQuality } from "@/lib/useStreamQuality";
 import { saveDurationAction } from "@/app/admin/actions";
 import { toggleFavoriteAction, getFavoriteIdsAction } from "@/app/actions/favorites";
 import { addTrackToPlaylistAction } from "@/app/actions/playlists";
@@ -315,6 +315,101 @@ function TrackActions({
               Go to artist
             </Link>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The hi-res badge in the fullscreen player, now clickable: tapping it opens a
+// small popover to switch streaming quality (Lossless / 320 / 128 kbps) without
+// leaving the player. Mirrors the Settings > Playback control.
+function QualityBadgePicker({
+  bd,
+  srStr,
+  quality,
+  onChange,
+}: {
+  bd: number;
+  srStr: string;
+  quality: StreamQuality;
+  onChange: (q: StreamQuality) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const badgeLeft = quality === "lossless" ? `${bd}-bit` : "MP3";
+  const badgeRight = quality === "lossless" ? `${srStr} kHz` : `${quality} kbps`;
+
+  const options: { value: StreamQuality; title: string; desc: string }[] = [
+    { value: "lossless", title: "Lossless", desc: `Original · ${bd}-bit ${srStr} kHz` },
+    { value: "320", title: "High", desc: "MP3 320 kbps · much lighter" },
+    { value: "128", title: "Data Saver", desc: "MP3 128 kbps · smoothest on slow networks" },
+  ];
+
+  return (
+    <div ref={ref} className="relative w-fit my-2">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Streaming quality"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex items-center rounded-md overflow-hidden shadow-md transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+      >
+        <span className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#0d9488" }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M11 3v18h2V3h-2zM7 7v10h2V7H7zm8 2v6h2V9h-2zM3 10v4h2v-4H3zm16 1v2h2v-2h-2z"/></svg>
+          <span>{badgeLeft}</span>
+        </span>
+        <span className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#4338ca" }}>
+          {badgeRight}
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className={`transition-transform ${open ? "rotate-180" : ""}`}>
+            <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
+          </svg>
+        </span>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-[80] w-64 rounded-xl p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
+          style={{ background: "#161a24", border: "1px solid rgba(255,255,255,0.09)" }}
+        >
+          {options.map((opt) => {
+            const active = quality === opt.value;
+            return (
+              <button
+                key={opt.value}
+                role="option"
+                aria-selected={active}
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-white/5"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-bold" style={{ color: active ? "var(--accent, #2dd4bf)" : "#fff" }}>
+                    {opt.title}
+                  </p>
+                  <p className="text-[11px] text-slate-400">{opt.desc}</p>
+                </div>
+                {active && (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent, #2dd4bf)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+          <p className="px-3 pt-1.5 pb-1 text-[10px] text-slate-500 border-t border-white/5 mt-1">
+            Changing quality restarts the current song
+          </p>
         </div>
       )}
     </div>
@@ -1480,9 +1575,10 @@ export default function BottomPlayer() {
     };
   }, [isExpanded, coverColor, isPlaying]);
 
-  // Streaming quality chosen in Settings. Applied via ?q= on the audio proxy;
-  // changing it mid-song reloads the current track at the new quality.
-  const [streamQuality] = useStreamQuality();
+  // Streaming quality chosen in Settings or via the player's quality badge.
+  // Applied via ?q= on the audio proxy; changing it mid-song reloads the
+  // current track at the new quality.
+  const [streamQuality, setStreamQuality] = useStreamQuality();
 
   const rawUrl = currentTrack?.file_url || "";
   const audioSrc = withQuality(
@@ -1535,10 +1631,6 @@ export default function BottomPlayer() {
     streamQuality
   );
 
-  // Honest quality badge: while streaming a compressed variant, show the MP3
-  // bitrate instead of the original file's hi-res specs.
-  const badgeLeft = streamQuality === "lossless" ? `${bd}-bit` : "MP3";
-  const badgeRight = streamQuality === "lossless" ? `${srStr} kHz` : `${streamQuality} kbps`;
 
   return (
     <>
@@ -1683,16 +1775,8 @@ export default function BottomPlayer() {
                   {currentTrack.album}{currentTrack.album && currentTrack.year ? "  ·  " : ""}{currentTrack.year || ""}
                 </p>
               )}
-              {/* Reference Hi-Res badge */}
-              <div className="flex items-center rounded-md overflow-hidden w-fit my-2 shadow-md">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#0d9488" }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M11 3v18h2V3h-2zM7 7v10h2V7H7zm8 2v6h2V9h-2zM3 10v4h2v-4H3zm16 1v2h2v-2h-2z"/></svg>
-                  <span>{badgeLeft}</span>
-                </div>
-                <div className="px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#4338ca" }}>
-                  {badgeRight}
-                </div>
-              </div>
+              {/* Quality badge — click to switch streaming quality */}
+              <QualityBadgePicker bd={bd} srStr={srStr} quality={streamQuality} onChange={setStreamQuality} />
               {/* Clean Minimalist Actions */}
               <div className="mt-4">
                 <TrackActions
@@ -1738,16 +1822,8 @@ export default function BottomPlayer() {
                     {currentTrack.album}{currentTrack.album && currentTrack.year ? "  ·  " : ""}{currentTrack.year || ""}
                   </p>
                 )}
-                {/* Reference Hi-Res badge */}
-                <div className="flex items-center rounded-md overflow-hidden w-fit my-2 shadow-md">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#0d9488" }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M11 3v18h2V3h-2zM7 7v10h2V7H7zm8 2v6h2V9h-2zM3 10v4h2v-4H3zm16 1v2h2v-2h-2z"/></svg>
-                    <span>{badgeLeft}</span>
-                  </div>
-                  <div className="px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#4338ca" }}>
-                    {badgeRight}
-                  </div>
-                </div>
+                {/* Quality badge — click to switch streaming quality */}
+                <QualityBadgePicker bd={bd} srStr={srStr} quality={streamQuality} onChange={setStreamQuality} />
                 {/* Clean Minimalist Actions */}
                 <div className="mt-3 mb-2">
                   <TrackActions
