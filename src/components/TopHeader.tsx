@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import ZenifyGlyph from "@/components/ZenifyGlyph";
-import { getTracksByCategory } from "@/lib/cloudflare";
 import AISearchBarWrapper from "@/components/AISearchBarWrapper";
 
 export default async function TopHeader({ isHome = false }: { isHome?: boolean }) {
   const session = await auth();
   const isLoggedIn = !!session?.user;
-  const tracks = isHome ? [] : await getTracksByCategory(null);
 
   return (
     <header
@@ -55,7 +53,7 @@ export default async function TopHeader({ isHome = false }: { isHome?: boolean }
       {isHome ? (
         <div className="flex-1 max-w-[480px]" id="search-header-slot" />
       ) : (
-        <AISearchBarWrapper allTracks={tracks} />
+        <AISearchBarWrapper />
       )}
 
       {/* Notification / Theme toggle */}

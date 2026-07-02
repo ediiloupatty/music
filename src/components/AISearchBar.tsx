@@ -11,6 +11,9 @@ import { hashString, PALETTES } from "@/lib/utils";
 type AISearchBarProps = {
   allTracks: Track[];
   onFilteredTracks: (tracks: Track[] | null) => void;
+  // Fired on first user interaction with the input — lets the wrapper defer
+  // fetching the track index until the search is actually about to be used.
+  onActivate?: () => void;
 };
 
 // Mood / intent words (ID + EN) that should route a query to the AI even when
@@ -39,7 +42,7 @@ function SearchTrackCover({ track }: { track: Track }) {
   );
 }
 
-export default function AISearchBar({ allTracks, onFilteredTracks }: AISearchBarProps) {
+export default function AISearchBar({ allTracks, onFilteredTracks, onActivate }: AISearchBarProps) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Track[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -131,6 +134,21 @@ export default function AISearchBar({ allTracks, onFilteredTracks }: AISearchBar
     },
     [fuse]
   );
+
+  // The track index is lazy-loaded on first focus, so it can arrive AFTER the
+  // user has already typed. When the index (and thus `fuse`) changes under an
+  // active plain query, re-run it so results appear without another keystroke.
+  // Done as a during-render state adjustment (not an effect) per React's
+  // derived-state pattern — avoids an extra commit and the set-state-in-effect
+  // lint rule.
+  const [prevFuse, setPrevFuse] = useState(fuse);
+  if (prevFuse !== fuse) {
+    setPrevFuse(fuse);
+    const trimmed = query.trim();
+    if (trimmed && !isAIMode) {
+      setSearchResults(fuse.search(trimmed).map((r) => r.item));
+    }
+  }
 
   // AI search: send to /api/ai/search
   const aiSearch = useCallback(
@@ -242,7 +260,9 @@ export default function AISearchBar({ allTracks, onFilteredTracks }: AISearchBar
 
   const handleRecentClick = (track: Track) => {
     const idx = allTracks.findIndex((t) => t.id === track.id);
-    playTrack(allTracks, idx >= 0 ? idx : 0);
+    // Index may still be loading (lazy fetch) — play just this track then.
+    if (idx >= 0) playTrack(allTracks, idx);
+    else playTrack([track], 0);
     saveRecentSearch(track);
     setIsOpen(false);
   };
@@ -301,7 +321,7 @@ export default function AISearchBar({ allTracks, onFilteredTracks }: AISearchBar
           className="bg-transparent border-none outline-none text-sm w-full"
           style={{ color: "var(--text-primary)" }}
           value={query}
-          onFocus={() => setIsOpen(true)}
+          onFocus={() => { setIsOpen(true); onActivate?.(); }}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
         />

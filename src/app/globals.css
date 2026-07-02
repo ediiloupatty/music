@@ -147,6 +147,17 @@
 [data-perf="lite"] .dynamic-bg-blur {
   filter: blur(20px) !important;
 }
+/* Decorative infinite animations (spinning vinyl, equalizer bars, ken-burns
+   hero) keep the compositor awake forever for pure decoration — freeze them
+   on weak devices. The elements keep a sensible static appearance. */
+[data-perf="lite"] .spin-slow,
+[data-perf="lite"] .ken-burns-bg {
+  animation: none !important;
+}
+[data-perf="lite"] .eq-bar {
+  animation: none !important;
+  transform: scaleY(0.6);
+}
 
 /* ═══════════════════════════════════════════════════════════
    ACCESSIBILITY

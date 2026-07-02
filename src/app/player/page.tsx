@@ -14,7 +14,7 @@ import MainContentWrapper from "@/components/MainContentWrapper";
 export default async function PlayerHome({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const resolvedParams = await searchParams;
   const currentCategory = (resolvedParams?.category as string) || null;
