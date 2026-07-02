@@ -1,11 +1,13 @@
 import BrowseShell from "@/components/BrowseShell";
 import PlaylistGrid from "@/components/PlaylistGrid";
 import { getPlaylists } from "@/lib/cloudflare";
+import { auth } from "@/auth";
 
-export const revalidate = 30;
+export const dynamic = "force-dynamic";
 
 export default async function PlaylistsPage() {
-  const playlists = await getPlaylists();
+  const session = await auth();
+  const playlists = await getPlaylists(session?.user?.email || null);
   return (
     <BrowseShell>
       <PlaylistGrid heading="Playlists" playlists={playlists} wrap />

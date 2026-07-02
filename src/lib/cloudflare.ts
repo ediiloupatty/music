@@ -178,11 +178,19 @@ async function runInitializeD1Tables() {
   }
 }
 
+// Playlists are personal: only the signed-in owner's playlists are returned.
+// `userEmail` is part of the cache key (it's a function argument), so one user's
+// list can never be served to another. Logged out → empty (nothing personal to
+// show). Playlists with no owner (legacy rows) are hidden by the filter.
 export const getPlaylists = cacheFn(
-  async (): Promise<Playlist[]> => {
+  async (userEmail: string | null = null): Promise<Playlist[]> => {
     if (USE_MOCK) return MOCK_PLAYLISTS;
+    if (!userEmail) return [];
     try {
-      const rows = await queryD1("SELECT * FROM playlists ORDER BY created_at ASC");
+      const rows = await queryD1(
+        "SELECT * FROM playlists WHERE user_email = ? ORDER BY created_at ASC",
+        [userEmail]
+      );
       return rows as Playlist[];
     } catch (error) {
       console.error("Error fetching playlists:", error);
@@ -194,11 +202,16 @@ export const getPlaylists = cacheFn(
 );
 
 export const getPlaylistById = cacheFn(
-  async (id: string): Promise<Playlist | null> => {
+  async (id: string, userEmail: string | null = null): Promise<Playlist | null> => {
     if (USE_MOCK) return MOCK_PLAYLISTS.find((p) => p.id === id) || null;
     try {
       const rows = await queryD1("SELECT * FROM playlists WHERE id = ?", [id]);
-      return rows.length > 0 ? (rows[0] as Playlist) : null;
+      const pl = rows.length > 0 ? (rows[0] as Playlist) : null;
+      if (!pl) return null;
+      // Personal playlist: only the owner may open it (blocks reading someone
+      // else's playlist by guessing its id via ?playlist=<id>).
+      if (!userEmail || !pl.user_email || pl.user_email !== userEmail) return null;
+      return pl;
     } catch (error) {
       console.error("Error fetching playlist:", error);
       return null;
@@ -446,14 +459,38 @@ export async function incrementPlayCount(trackId: string, userEmail?: string): P
   }
 }
 
-// Recently played tracks (most recent first). Empty until something is played.
+// Per-user recently played (most recent first), sourced from user_play_history
+// (populated per-user by /api/play) instead of the shared tracks.last_played_at
+// column — otherwise one listener's plays would show up for everyone.
+// `userEmail` is part of the cache key, so users never see each other's history.
+//
+// Fallback when there is no personal history yet (or the visitor is logged out):
+// the globally most-played tracks. This is meaningful and intentionally NOT the
+// newest additions (those already appear as "Recently Added" elsewhere).
 export const getRecentlyPlayed = cacheFn(
-  async (limit = 9): Promise<Track[]> => {
+  async (userEmail: string | null = null, limit = 9): Promise<Track[]> => {
     if (USE_MOCK) return MOCK_TRACKS.slice(0, limit);
     try {
-      const sql = `${TRACK_SELECT_WITH_COVER} WHERE t.last_played_at IS NOT NULL ORDER BY t.last_played_at DESC LIMIT ${Number(limit)}`;
-      const rows = await queryD1(sql);
-      return await normalizeTracks(rows);
+      if (userEmail) {
+        const sql = `
+          ${TRACK_SELECT_WITH_COVER}
+          INNER JOIN (
+            SELECT track_id, MAX(played_at) AS last_played
+            FROM user_play_history
+            WHERE user_email = ?
+            GROUP BY track_id
+          ) h ON h.track_id = t.id
+          ORDER BY h.last_played DESC
+          LIMIT ${Number(limit)}
+        `;
+        const rows = await queryD1(sql, [userEmail]);
+        const tracks = await normalizeTracks(rows);
+        if (tracks.length > 0) return tracks;
+      }
+      // Fallback: globally most-played tracks.
+      const popSql = `${TRACK_SELECT_WITH_COVER} WHERE COALESCE(t.play_count, 0) > 0 ORDER BY t.play_count DESC LIMIT ${Number(limit)}`;
+      const popRows = await queryD1(popSql);
+      return await normalizeTracks(popRows);
     } catch (error) {
       console.error("Error fetching recently played:", error);
       return [];

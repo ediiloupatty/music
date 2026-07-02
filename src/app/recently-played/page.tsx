@@ -10,9 +10,10 @@ export default async function RecentlyPlayedPage() {
   const session = await auth();
   const isLoggedIn = !!session?.user;
 
+  const userEmail = session?.user?.email || null;
   const [userFavorites, recentlyPlayedTracks] = await Promise.all([
-    session?.user?.email ? getUserFavorites(session.user.email) : Promise.resolve([]),
-    getRecentlyPlayed(100),
+    userEmail ? getUserFavorites(userEmail) : Promise.resolve([]),
+    getRecentlyPlayed(userEmail, 100),
   ]);
 
   return (

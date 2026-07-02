@@ -57,7 +57,7 @@ export default function DynamicBackground() {
     >
       {bgImage && (
         <div
-          className="absolute inset-0 w-full h-full transition-all duration-[1500ms] ease-in-out"
+          className="dynamic-bg-blur absolute inset-0 w-full h-full transition-all duration-[1500ms] ease-in-out"
           style={{
             backgroundImage: `url(${bgImage})`,
             backgroundSize: "cover",

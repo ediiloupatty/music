@@ -528,6 +528,11 @@ export default function BottomPlayer() {
   // CROSSFADE_SEC seconds after the user hit pause.
   const tailFadeIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const primaryFadeIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Safety timer: if a crossfade's incoming track never emits 'playing' (slow
+  // buffering, autoplay throttled while backgrounded), the fade-in never runs
+  // and the output gain would stay stuck near zero — the track appears to play
+  // but is silent. This restores full volume if that happens.
+  const crossfadeSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // While a crossfade is audible, the compact bottom bar keeps showing the
   // OUTGOING track so the title/cover don't visibly jump ahead of the audio.
   const [crossfadePrevTrack, setCrossfadePrevTrack] = useState<Track | null>(null);
@@ -550,6 +555,20 @@ export default function BottomPlayer() {
       if (i >= steps) { clearInterval(id); onDone?.(); }
     }, (seconds * 1000) / steps);
     return id;
+  };
+
+  // Force the output gain straight back to the current volume, cancelling any
+  // in-flight crossfade ramp. The safety net that guarantees playback is never
+  // left silent by a crossfade that didn't finish its fade-in.
+  const restoreGainNow = () => {
+    const ctx = audioContextRef.current;
+    const g = gainNodeRef.current;
+    if (g && ctx) {
+      g.gain.cancelScheduledValues(ctx.currentTime);
+      g.gain.setValueAtTime(volume, ctx.currentTime);
+    } else if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
   };
 
   // Abort the audible half of a crossfade: silence the outgoing tail, cancel its
@@ -602,6 +621,18 @@ export default function BottomPlayer() {
       audio.volume = 0;
     }
 
+    // If 'playing' hasn't fired within a short grace period, the fade-in never
+    // started — un-silence so the track isn't stuck quiet. (handlePlaying clears
+    // this the moment the real fade-in begins.)
+    if (crossfadeSafetyRef.current) clearTimeout(crossfadeSafetyRef.current);
+    crossfadeSafetyRef.current = setTimeout(() => {
+      crossfadeSafetyRef.current = null;
+      if (fadeInPendingRef.current) {
+        fadeInPendingRef.current = false;
+        restoreGainNow();
+      }
+    }, 2500);
+
     playNextTrack();
   };
 
@@ -610,6 +641,8 @@ export default function BottomPlayer() {
   const handlePlaying = () => {
     if (!fadeInPendingRef.current) return;
     fadeInPendingRef.current = false;
+    // The real fade-in is starting — the stuck-silent safety net is no longer needed.
+    if (crossfadeSafetyRef.current) { clearTimeout(crossfadeSafetyRef.current); crossfadeSafetyRef.current = null; }
     const ctx = audioContextRef.current;
     const audio = audioRef.current;
     if (gainNodeRef.current && ctx) {
@@ -893,7 +926,14 @@ export default function BottomPlayer() {
     if (isPlaying) {
       audioRef.current.pause();
     } else {
-      audioRef.current.play();
+      // Taking manual control voids any half-finished crossfade: clear its flags
+      // and force full volume so pressing play is NEVER silent (otherwise a
+      // crossfade whose fade-in never ran leaves the gain node stuck near zero).
+      fadeInPendingRef.current = false;
+      crossfadingRef.current = false;
+      if (crossfadeSafetyRef.current) { clearTimeout(crossfadeSafetyRef.current); crossfadeSafetyRef.current = null; }
+      restoreGainNow();
+      audioRef.current.play().catch(() => {});
     }
     setIsPlaying(!isPlaying);
   };
@@ -1125,6 +1165,7 @@ export default function BottomPlayer() {
       if (tailFadeIdRef.current) clearInterval(tailFadeIdRef.current);
       if (primaryFadeIdRef.current) clearInterval(primaryFadeIdRef.current);
       if (crossfadeUiTimerRef.current) clearTimeout(crossfadeUiTimerRef.current);
+      if (crossfadeSafetyRef.current) clearTimeout(crossfadeSafetyRef.current);
     };
   }, []);
 
@@ -2015,7 +2056,7 @@ export default function BottomPlayer() {
         /*  MINI PLAYER (bottom bar)                                          */
         /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
         <div 
-          className="glass-panel fixed bottom-[4rem] md:bottom-0 left-0 w-full h-auto min-h-[6rem] py-3 md:py-0 md:h-24 border-t-0 border-b-0 border-l-0 border-r-0 px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-50 gap-4 md:gap-0 cursor-pointer backdrop-blur-xl transition-colors shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
+          className="glass-panel glass-chrome fixed bottom-[4rem] md:bottom-0 left-0 w-full h-auto min-h-[6rem] py-3 md:py-0 md:h-24 border-t-0 border-b-0 border-l-0 border-r-0 px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-50 gap-4 md:gap-0 cursor-pointer backdrop-blur-xl transition-colors shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
           onContextMenu={(e) => e.preventDefault()}
           onClick={() => setIsExpanded(true)}
         >

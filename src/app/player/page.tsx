@@ -22,25 +22,29 @@ export default async function PlayerHome({
   const currentPlaylistId = (resolvedParams?.playlist as string) || null;
   const playTrackId = (resolvedParams?.play as string) || null;
 
+  // Auth first: the user's email scopes the personal fetches below (playlists,
+  // recently played) and must be known before they run.
+  const session = await auth();
+  const userEmail = session?.user?.email || null;
+
   // Run ALL independent fetches in parallel to avoid waterfall latency
-  const [autoPlayTrack, playlist, tracks, recentlyPlayed, newTracks, artists, playlists, session] =
+  const [autoPlayTrack, playlist, tracks, recentlyPlayed, newTracks, artists, playlists] =
     await Promise.all([
       playTrackId ? getTrackById(playTrackId) : null,
-      currentPlaylistId ? getPlaylistById(currentPlaylistId) : null,
+      currentPlaylistId ? getPlaylistById(currentPlaylistId, userEmail) : null,
       currentAlbum
         ? getTracksByAlbum(currentAlbum)
         : getTracksByCategory(currentCategory),
-      getRecentlyPlayed(9),
+      getRecentlyPlayed(userEmail, 9),
       getNewTracks(12),
       getArtists(),
-      getPlaylists(),
-      auth(),
+      getPlaylists(userEmail),
     ]);
 
   // These depend on results above, run in parallel where possible
   const [playlistTracks, userFavorites] = await Promise.all([
     playlist ? getPlaylistTracks(playlist.id, playlist.name) : Promise.resolve([]),
-    session?.user?.email ? getUserFavorites(session.user.email) : Promise.resolve([]),
+    userEmail ? getUserFavorites(userEmail) : Promise.resolve([]),
   ]);
   const isLoggedIn = !!session?.user;
 

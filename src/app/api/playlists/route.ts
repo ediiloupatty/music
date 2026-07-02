@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { getPlaylists, getCategoryCounts } from "@/lib/cloudflare";
+import { auth } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    const session = await auth();
     const [playlists, counts] = await Promise.all([
-      getPlaylists(),
+      getPlaylists(session?.user?.email || null),
       getCategoryCounts(),
     ]);
 

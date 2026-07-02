@@ -59,7 +59,7 @@ export default async function ProfilePage() {
     getUserFavorites(userEmail),
     getTracksByCategory(null),
     getUserStats(userEmail),
-    getRecentlyPlayed(4),
+    getRecentlyPlayed(userEmail, 4),
   ]);
 
   // Filter and limit favorites (e.g., top 12)
@@ -71,9 +71,8 @@ export default async function ProfilePage() {
         .toLocaleDateString("en-US", { month: "long", year: "numeric" })
     : null;
 
-  // The user's own playlists (realtime — no visual padding so the stat is honest).
-  const allPlaylists = await getPlaylists();
-  const userPlaylists = allPlaylists.filter((p) => p.user_email === userEmail);
+  // The user's own playlists (already scoped to this user by getPlaylists).
+  const userPlaylists = await getPlaylists(userEmail);
 
   const [c1, c2] = PALETTES[hashString(userEmail || userName) % PALETTES.length];
 

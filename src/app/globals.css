@@ -120,6 +120,35 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
+   PERFORMANCE (LITE) MODE
+═══════════════════════════════════════════════════════════ */
+/* Toggled by the `data-perf="lite"` attribute on <html> (see ThemeContext —
+   auto-enabled on low-power devices, or forced from Settings).
+
+   `backdrop-filter: blur()` on the always-visible chrome (sidebar / header /
+   mini-player) is the single biggest recurring GPU cost in the app: every frame
+   the content behind them moves — the dynamic background, a scrolling list, the
+   visualizer — the compositor has to re-sample and re-blur a large screen
+   region. Lite mode drops ALL backdrop blur and swaps that chrome to an opaque
+   background so nothing shows through, trading the glass look for a large,
+   steady compositor saving on weak machines. */
+[data-perf="lite"] *,
+[data-perf="lite"] *::before,
+[data-perf="lite"] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-perf="lite"] .glass-chrome {
+  /* Opaque so removing the blur doesn't reveal the content scrolling behind. */
+  background: var(--nav-bg) !important;
+}
+/* The cover backdrop is painted from a 32px thumbnail, so a huge blur radius is
+   wasted work — shrink it to something the compositor barely notices. */
+[data-perf="lite"] .dynamic-bg-blur {
+  filter: blur(20px) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
    ACCESSIBILITY
 ═══════════════════════════════════════════════════════════ */
 /* Visible keyboard focus ring (mouse clicks don't trigger :focus-visible, so

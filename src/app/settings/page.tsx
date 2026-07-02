@@ -14,7 +14,7 @@ type UserInfo = {
 } | null;
 
 export default function SettingsPage() {
-  const { reducedMotion, toggleReducedMotion } = useTheme();
+  const { reducedMotion, toggleReducedMotion, performanceMode, setPerformanceMode, liteActive } = useTheme();
   const [user, setUser] = useState<UserInfo>(null);
   const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
@@ -298,6 +298,60 @@ export default function SettingsPage() {
                   style={{ left: reducedMotion ? "calc(100% - 1.375rem)" : "0.125rem" }}
                 />
               </button>
+            </div>
+
+            <div style={{ height: "1px", background: "var(--border-subtle)", margin: "0 1rem" }} />
+
+            {/* Performance Mode */}
+            <div className="px-4 py-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: "var(--bg-card)", color: "var(--text-secondary)" }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13 2L3 14h7v8l10-12h-7z" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+                    Performance Mode
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {performanceMode === "auto"
+                      ? `Auto — ${liteActive ? "lite (lighter on this device)" : "full glass"}`
+                      : performanceMode === "on"
+                        ? "Lite — glass effects off, lightest"
+                        : "Off — full glass effects"}
+                  </p>
+                </div>
+              </div>
+              {/* Tri-state segmented control */}
+              <div
+                className="grid grid-cols-3 gap-1 p-1 rounded-xl"
+                style={{ background: "var(--bg-card)" }}
+              >
+                {([
+                  { value: "auto", label: "Auto" },
+                  { value: "off", label: "Full" },
+                  { value: "on", label: "Lite" },
+                ] as const).map((opt) => {
+                  const active = performanceMode === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setPerformanceMode(opt.value)}
+                      className="py-1.5 rounded-lg text-xs font-bold transition-colors"
+                      style={{
+                        background: active ? "var(--accent)" : "transparent",
+                        color: active ? "#fff" : "var(--text-secondary)",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </section>
