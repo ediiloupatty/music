@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2Client } from "@/lib/cloudflare";
 
@@ -53,6 +53,21 @@ export async function GET(
   const host = request.headers.get("host");
   if (referer && host && !referer.includes(host)) {
     return new NextResponse("Forbidden", { status: 403 });
+  }
+
+  // Streaming quality: ?q=320 / ?q=128 selects a pre-transcoded MP3 variant
+  // living under the q320/ / q128/ prefix (see scripts/transcode-variants.mjs).
+  // If the variant doesn't exist (yet), fall back to the original file so a
+  // partially-transcoded library keeps playing everything.
+  const q = request.nextUrl.searchParams.get("q");
+  if (q === "320" || q === "128") {
+    const variantKey = `q${q}/${key.replace(/\.[^./]+$/, "")}.mp3`;
+    try {
+      await r2Client.send(new HeadObjectCommand({ Bucket: bucketName, Key: variantKey }));
+      key = variantKey;
+    } catch {
+      // Variant missing — serve the original.
+    }
   }
 
   try {

@@ -11,6 +11,7 @@ import CoverImage from "@/components/CoverImage";
 import { cleanTitle } from "@/lib/cleanTitle";
 import { isRenderingActive, onRenderingActiveChange } from "@/lib/renderGate";
 import { formatAudioSpecs } from "@/lib/formatSpecs";
+import { useStreamQuality, withQuality } from "@/lib/useStreamQuality";
 import { saveDurationAction } from "@/app/admin/actions";
 import { toggleFavoriteAction, getFavoriteIdsAction } from "@/app/actions/favorites";
 import { addTrackToPlaylistAction } from "@/app/actions/playlists";
@@ -1479,10 +1480,17 @@ export default function BottomPlayer() {
     };
   }, [isExpanded, coverColor, isPlaying]);
 
+  // Streaming quality chosen in Settings. Applied via ?q= on the audio proxy;
+  // changing it mid-song reloads the current track at the new quality.
+  const [streamQuality] = useStreamQuality();
+
   const rawUrl = currentTrack?.file_url || "";
-  const audioSrc = rawUrl.includes(".r2.dev/")
-    ? `/api/audio/${rawUrl.split(".r2.dev/").pop()}`
-    : rawUrl;
+  const audioSrc = withQuality(
+    rawUrl.includes(".r2.dev/")
+      ? `/api/audio/${rawUrl.split(".r2.dev/").pop()}`
+      : rawUrl,
+    streamQuality
+  );
 
   // Always render the Lyrics tab/panel when a track is loaded. Tracks without
   // lyrics fall back to a clear "no lyrics" message instead of the whole section
@@ -1520,9 +1528,17 @@ export default function BottomPlayer() {
 
   const nextTrack = upcoming[0]?.track;
   const nextRawUrl = nextTrack?.file_url || "";
-  const nextAudioSrc = nextRawUrl.includes(".r2.dev/")
-    ? `/api/audio/${nextRawUrl.split(".r2.dev/").pop()}`
-    : nextRawUrl;
+  const nextAudioSrc = withQuality(
+    nextRawUrl.includes(".r2.dev/")
+      ? `/api/audio/${nextRawUrl.split(".r2.dev/").pop()}`
+      : nextRawUrl,
+    streamQuality
+  );
+
+  // Honest quality badge: while streaming a compressed variant, show the MP3
+  // bitrate instead of the original file's hi-res specs.
+  const badgeLeft = streamQuality === "lossless" ? `${bd}-bit` : "MP3";
+  const badgeRight = streamQuality === "lossless" ? `${srStr} kHz` : `${streamQuality} kbps`;
 
   return (
     <>
@@ -1671,10 +1687,10 @@ export default function BottomPlayer() {
               <div className="flex items-center rounded-md overflow-hidden w-fit my-2 shadow-md">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#0d9488" }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M11 3v18h2V3h-2zM7 7v10h2V7H7zm8 2v6h2V9h-2zM3 10v4h2v-4H3zm16 1v2h2v-2h-2z"/></svg>
-                  <span>{bd}-bit</span>
+                  <span>{badgeLeft}</span>
                 </div>
                 <div className="px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#4338ca" }}>
-                  {srStr} kHz
+                  {badgeRight}
                 </div>
               </div>
               {/* Clean Minimalist Actions */}
@@ -1726,10 +1742,10 @@ export default function BottomPlayer() {
                 <div className="flex items-center rounded-md overflow-hidden w-fit my-2 shadow-md">
                   <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#0d9488" }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M11 3v18h2V3h-2zM7 7v10h2V7H7zm8 2v6h2V9h-2zM3 10v4h2v-4H3zm16 1v2h2v-2h-2z"/></svg>
-                    <span>{bd}-bit</span>
+                    <span>{badgeLeft}</span>
                   </div>
                   <div className="px-2.5 py-1 text-[11px] font-black tracking-wider text-white" style={{ background: "#4338ca" }}>
-                    {srStr} kHz
+                    {badgeRight}
                   </div>
                 </div>
                 {/* Clean Minimalist Actions */}

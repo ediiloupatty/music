@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getCurrentUserAction, signOutAction } from "@/app/actions/settings";
 import { useAudioCache, formatBytes } from "@/lib/useAudioCache";
+import { useStreamQuality } from "@/lib/useStreamQuality";
 
 type UserInfo = {
   name: string;
@@ -20,6 +21,7 @@ export default function SettingsPage() {
   const [signingOut, setSigningOut] = useState(false);
   const { isOnline, stats, swReady, refreshStats, clearCache } = useAudioCache();
   const [clearing, setClearing] = useState(false);
+  const [streamQuality, setStreamQuality] = useStreamQuality();
 
   useEffect(() => {
     getCurrentUserAction().then((u) => {
@@ -341,6 +343,72 @@ export default function SettingsPage() {
                     <button
                       key={opt.value}
                       onClick={() => setPerformanceMode(opt.value)}
+                      className="py-1.5 rounded-lg text-xs font-bold transition-colors"
+                      style={{
+                        background: active ? "var(--accent)" : "transparent",
+                        color: active ? "#fff" : "var(--text-secondary)",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Playback Section ── */}
+        <section>
+          <h2
+            className="text-xs font-black tracking-[0.25em] uppercase mb-3"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Playback
+          </h2>
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+          >
+            {/* Streaming Quality */}
+            <div className="px-4 py-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: "var(--bg-card)", color: "var(--text-secondary)" }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M11 3v18h2V3h-2zM7 7v10h2V7H7zm8 2v6h2V9h-2zM3 10v4h2v-4H3zm16 1v2h2v-2h-2z" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+                    Streaming Quality
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {streamQuality === "lossless"
+                      ? "Lossless — original hi-res file, heaviest on slow networks"
+                      : streamQuality === "320"
+                        ? "High — MP3 320 kbps, near-lossless at a fraction of the size"
+                        : "Data saver — MP3 128 kbps, smoothest on slow networks"}
+                  </p>
+                </div>
+              </div>
+              {/* Tri-state segmented control */}
+              <div
+                className="grid grid-cols-3 gap-1 p-1 rounded-xl"
+                style={{ background: "var(--bg-card)" }}
+              >
+                {([
+                  { value: "lossless", label: "Lossless" },
+                  { value: "320", label: "320 kbps" },
+                  { value: "128", label: "128 kbps" },
+                ] as const).map((opt) => {
+                  const active = streamQuality === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setStreamQuality(opt.value)}
                       className="py-1.5 rounded-lg text-xs font-bold transition-colors"
                       style={{
                         background: active ? "var(--accent)" : "transparent",
