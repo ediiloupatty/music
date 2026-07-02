@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import useSWRImmutable from "swr/immutable";
 import Fuse from "fuse.js";
 import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
@@ -9,12 +10,15 @@ import { cleanTitle } from "@/lib/cleanTitle";
 import { hashString, PALETTES } from "@/lib/utils";
 
 type AISearchBarProps = {
-  allTracks: Track[];
+  // Optional immediate index (e.g. the home page's current list). Used only as
+  // a fallback while the full-library index below is still loading, so search
+  // always covers the WHOLE library — not just the page's subset.
+  allTracks?: Track[];
   onFilteredTracks: (tracks: Track[] | null) => void;
-  // Fired on first user interaction with the input — lets the wrapper defer
-  // fetching the track index until the search is actually about to be used.
-  onActivate?: () => void;
 };
+
+const indexFetcher = (url: string) =>
+  fetch(url).then((r) => r.json() as Promise<{ tracks: Track[] }>);
 
 // Mood / intent words (ID + EN) that should route a query to the AI even when
 // it's short — e.g. "lagu sedih", "musik santai", "happy songs".
@@ -42,7 +46,14 @@ function SearchTrackCover({ track }: { track: Track }) {
   );
 }
 
-export default function AISearchBar({ allTracks, onFilteredTracks, onActivate }: AISearchBarProps) {
+export default function AISearchBar({ allTracks = [], onFilteredTracks }: AISearchBarProps) {
+  // Lazy full-library index: fetched once per session on the first focus of
+  // the input, then cached by SWR. Searching over this instead of the page's
+  // own (often partial) track list fixes "no results" on filtered pages.
+  const [activated, setActivated] = useState(false);
+  const { data: indexData } = useSWRImmutable(activated ? "/api/tracks" : null, indexFetcher);
+  const library = indexData?.tracks?.length ? indexData.tracks : allTracks;
+
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Track[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -108,7 +119,7 @@ export default function AISearchBar({ allTracks, onFilteredTracks, onActivate }:
   // Build a Fuse index whenever the track list changes.
   const fuse = useMemo(
     () =>
-      new Fuse(allTracks, {
+      new Fuse(library, {
         keys: [
           { name: "title", weight: 0.5 },
           { name: "artist", weight: 0.3 },
@@ -120,7 +131,7 @@ export default function AISearchBar({ allTracks, onFilteredTracks, onActivate }:
         minMatchCharLength: 2,
         ignoreLocation: true,
       }),
-    [allTracks]
+    [library]
   );
 
   // Local search: fuzzy filter using Fuse.js
@@ -175,7 +186,7 @@ export default function AISearchBar({ allTracks, onFilteredTracks, onActivate }:
         if (uniqueIds.length > 0) {
           const idSet = new Set<string>(uniqueIds);
           const ordered = uniqueIds
-            .map((id: string) => allTracks.find((t) => t.id === id))
+            .map((id: string) => library.find((t) => t.id === id))
             .filter(Boolean) as Track[];
           const localResults = fuse.search(q).map((r) => r.item);
           const remaining = localResults.filter((t) => !idSet.has(t.id));
@@ -195,7 +206,7 @@ export default function AISearchBar({ allTracks, onFilteredTracks, onActivate }:
         setIsAILoading(false);
       }
     },
-    [allTracks, localSearch, fuse]
+    [library, localSearch, fuse]
   );
 
   // Handle input change with smart routing
@@ -259,9 +270,9 @@ export default function AISearchBar({ allTracks, onFilteredTracks, onActivate }:
   };
 
   const handleRecentClick = (track: Track) => {
-    const idx = allTracks.findIndex((t) => t.id === track.id);
+    const idx = library.findIndex((t) => t.id === track.id);
     // Index may still be loading (lazy fetch) — play just this track then.
-    if (idx >= 0) playTrack(allTracks, idx);
+    if (idx >= 0) playTrack(library, idx);
     else playTrack([track], 0);
     saveRecentSearch(track);
     setIsOpen(false);
@@ -321,7 +332,7 @@ export default function AISearchBar({ allTracks, onFilteredTracks, onActivate }:
           className="bg-transparent border-none outline-none text-sm w-full"
           style={{ color: "var(--text-primary)" }}
           value={query}
-          onFocus={() => { setIsOpen(true); onActivate?.(); }}
+          onFocus={() => { setIsOpen(true); setActivated(true); }}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
         />
