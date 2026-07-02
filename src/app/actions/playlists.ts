@@ -27,6 +27,28 @@ export async function createPlaylistAction(name: string): Promise<{ success: boo
   }
 }
 
+export async function addTrackToPlaylistAction(
+  playlistId: string,
+  trackId: string
+): Promise<{ success: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user) return { success: false, error: "Not authenticated" };
+  if (!playlistId || !trackId) return { success: false, error: "Missing playlist or track" };
+
+  try {
+    await initializeD1Tables();
+    await queryD1(
+      "INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id) VALUES (?, ?)",
+      [playlistId, trackId]
+    );
+    revalidatePath("/player");
+    return { success: true };
+  } catch (error) {
+    console.error("Error adding track to playlist:", error);
+    return { success: false, error: "Failed to add track to playlist" };
+  }
+}
+
 export async function deletePlaylistAction(id: string): Promise<{ success: boolean; error?: string }> {
   const session = await auth();
   if (!session?.user) return { success: false, error: "Not authenticated" };

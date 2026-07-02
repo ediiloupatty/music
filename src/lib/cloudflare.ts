@@ -117,6 +117,17 @@ async function runInitializeD1Tables() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `;
+  // Explicit playlist membership. Playlists were originally backed purely by
+  // the track `category` field; this table lets users add arbitrary tracks to
+  // a playlist. Reads union both sources (see getPlaylistTracks).
+  const playlistTracksTable = `
+    CREATE TABLE IF NOT EXISTS playlist_tracks (
+      playlist_id TEXT NOT NULL,
+      track_id TEXT NOT NULL,
+      added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (playlist_id, track_id)
+    );
+  `;
   // Album art keyed by album name. cover_url here is a MANUAL upload used only
   // when the album has no embedded cover from any of its tracks.
   const albumsTable = `
@@ -148,6 +159,7 @@ async function runInitializeD1Tables() {
   await queryD1(favoritesTable);
   await queryD1(usersTable);
   await queryD1(playlistsTable);
+  await queryD1(playlistTracksTable);
   await queryD1(albumsTable);
   await queryD1(artistsTable);
   await queryD1(playHistoryTable);
@@ -194,6 +206,33 @@ export const getPlaylistById = cacheFn(
   },
   ["playlist-by-id"],
   { revalidate: 30, tags: ["playlists"] }
+);
+
+// Tracks in a playlist: the legacy category-named tracks UNION tracks the user
+// explicitly added via playlist_tracks. Explicitly added tracks keep working
+// even if the playlist was renamed away from a category.
+export const getPlaylistTracks = cacheFn(
+  async (playlistId: string, playlistName: string): Promise<Track[]> => {
+    if (USE_MOCK) return MOCK_TRACKS.filter((t) => t.category === playlistName);
+    try {
+      const sql = `
+        ${TRACK_SELECT_WITH_COVER}
+        LEFT JOIN playlist_tracks pt ON pt.track_id = t.id AND pt.playlist_id = ?
+        WHERE t.category = ? OR pt.playlist_id IS NOT NULL
+        ORDER BY t.created_at DESC
+      `;
+      const rows = await queryD1(sql, [playlistId, playlistName]);
+      return await normalizeTracks(rows);
+    } catch (error) {
+      // The playlist_tracks table is created lazily (initializeD1Tables runs on
+      // the first write action). Until then the JOIN fails — fall back to the
+      // legacy category-based lookup so existing playlists keep working.
+      console.error("Error fetching playlist tracks:", error);
+      return getTracksByCategory(playlistName);
+    }
+  },
+  ["playlist-tracks"],
+  { revalidate: 30, tags: ["tracks", "playlists"] }
 );
 
 

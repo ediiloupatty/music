@@ -190,11 +190,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // The real index into `tracks` of the currently playing song.
   const currentTrackIndex = playOrder[position] ?? 0;
 
-  // Upcoming tracks in the current play order (respects shuffle).
-  const upcoming = playOrder
-    .slice(position + 1)
-    .map((trackIdx) => ({ track: tracks[trackIdx], index: trackIdx }))
-    .filter((u) => u.track);
+  // Upcoming tracks in the current play order (respects shuffle). Memoised:
+  // a fresh array identity here would bust the context-value useMemo below on
+  // every provider render, re-rendering all consumers for nothing.
+  const upcoming = useMemo(
+    () =>
+      playOrder
+        .slice(position + 1)
+        .map((trackIdx) => ({ track: tracks[trackIdx], index: trackIdx }))
+        .filter((u) => u.track),
+    [playOrder, position, tracks]
+  );
 
   // ── Restore the last session on reload ─────────────────────────────────────
   // Reads from the split keys first, then falls back to the legacy single key

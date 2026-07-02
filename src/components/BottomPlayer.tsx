@@ -12,6 +12,8 @@ import { cleanTitle } from "@/lib/cleanTitle";
 import { isRenderingActive, onRenderingActiveChange } from "@/lib/renderGate";
 import { formatAudioSpecs } from "@/lib/formatSpecs";
 import { saveDurationAction } from "@/app/admin/actions";
+import { toggleFavoriteAction, getFavoriteIdsAction } from "@/app/actions/favorites";
+import { addTrackToPlaylistAction } from "@/app/actions/playlists";
 
 type ParsedLyric = { time: number; text: string };
 
@@ -146,6 +148,178 @@ function LargeCoverArt({ title, category, coverUrl, size = "lg" }: { title: stri
   );
 }
 
+// ─── Fullscreen track actions: Like / Add to playlist / More ───────────────
+// Rendered twice (desktop left column + mobile meta block); each instance owns
+// its menus, while the liked state is lifted to BottomPlayer so both hearts
+// stay in sync.
+type PlaylistOption = { id: string; name: string };
+
+function TrackActions({
+  track,
+  liked,
+  onToggleLike,
+  accentFill,
+  iconSize,
+  gapClass,
+  onNavigate,
+}: {
+  track: Track;
+  liked: boolean;
+  onToggleLike: () => void;
+  accentFill: string;
+  iconSize: number;
+  gapClass: string;
+  onNavigate: () => void; // closes the fullscreen player before a nav away
+}) {
+  const { showToast } = useToast();
+  const [openMenu, setOpenMenu] = useState<"playlist" | "more" | null>(null);
+  const [playlists, setPlaylists] = useState<PlaylistOption[] | null>(null);
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Close whichever menu is open on an outside click.
+  useEffect(() => {
+    if (!openMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpenMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [openMenu]);
+
+  const togglePlaylistMenu = () => {
+    setOpenMenu((m) => (m === "playlist" ? null : "playlist"));
+    if (playlists === null) {
+      fetch("/api/playlists")
+        .then((r) => r.json())
+        .then((d) =>
+          setPlaylists(
+            (d.playlists || []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name }))
+          )
+        )
+        .catch(() => setPlaylists([]));
+    }
+  };
+
+  const addToPlaylist = async (pl: PlaylistOption) => {
+    setAddingId(pl.id);
+    const result = await addTrackToPlaylistAction(pl.id, track.id);
+    setAddingId(null);
+    setOpenMenu(null);
+    if (result.success) showToast(`Added to "${pl.name}"`, "success");
+    else showToast(result.error || "Couldn't add to playlist", "error");
+  };
+
+  const copyLink = async () => {
+    setOpenMenu(null);
+    const url = `${window.location.origin}/player?play=${encodeURIComponent(track.id)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Link copied to clipboard", "success");
+    } catch {
+      showToast("Couldn't copy link", "error");
+    }
+  };
+
+  const menuClass =
+    "absolute bottom-full left-0 mb-3 w-56 rounded-xl border p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.7)] z-50";
+  const menuStyle = { background: "var(--bg-secondary)", borderColor: "var(--border-card)" };
+  const itemClass =
+    "w-full text-left px-2.5 py-1.5 rounded-lg text-sm transition-colors hover:bg-[var(--bg-card-hover)]";
+
+  return (
+    <div ref={rootRef} className={`relative flex items-center ${gapClass}`} onClick={(e) => e.stopPropagation()}>
+      {/* Like — wired to the favorites system */}
+      <button
+        onClick={onToggleLike}
+        className="transition-all active:scale-90 hover:scale-110"
+        style={{ color: liked ? accentFill : "#94a3b8" }}
+        aria-pressed={liked}
+        title={liked ? "Remove from favorites" : "Add to favorites"}
+      >
+        <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+      </button>
+
+      {/* Add to playlist */}
+      <button
+        onClick={togglePlaylistMenu}
+        className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110"
+        aria-pressed={openMenu === "playlist"}
+        title="Add to playlist"
+      >
+        <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+      </button>
+
+      {/* More */}
+      <button
+        onClick={() => setOpenMenu((m) => (m === "more" ? null : "more"))}
+        className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110"
+        aria-pressed={openMenu === "more"}
+        title="More"
+      >
+        <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+      </button>
+
+      {openMenu === "playlist" && (
+        <div className={menuClass} style={menuStyle}>
+          <p className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+            Add to playlist
+          </p>
+          {playlists === null ? (
+            <p className="px-2.5 py-2 text-sm" style={{ color: "var(--text-muted)" }}>Loading…</p>
+          ) : playlists.length === 0 ? (
+            <p className="px-2.5 py-2 text-sm" style={{ color: "var(--text-muted)" }}>No playlists yet</p>
+          ) : (
+            <div className="max-h-56 overflow-y-auto">
+              {playlists.map((pl) => (
+                <button
+                  key={pl.id}
+                  onClick={() => addToPlaylist(pl)}
+                  disabled={addingId === pl.id}
+                  className={`${itemClass} disabled:opacity-50`}
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  {pl.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {openMenu === "more" && (
+        <div className={menuClass} style={menuStyle}>
+          <button onClick={copyLink} className={itemClass} style={{ color: "var(--text-primary)" }}>
+            Copy link
+          </button>
+          {track.album && (
+            <Link
+              href={`/album/${encodeURIComponent(track.album)}`}
+              onClick={() => { setOpenMenu(null); onNavigate(); }}
+              className={`${itemClass} block`}
+              style={{ color: "var(--text-primary)" }}
+            >
+              Go to album
+            </Link>
+          )}
+          {track.artist && (
+            <Link
+              href={`/artist/${encodeURIComponent(track.artist)}`}
+              onClick={() => { setOpenMenu(null); onNavigate(); }}
+              className={`${itemClass} block`}
+              style={{ color: "var(--text-primary)" }}
+            >
+              Go to artist
+            </Link>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BottomPlayer() {
   const {
     tracks,
@@ -180,7 +354,6 @@ export default function BottomPlayer() {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [activeTab, setActiveTab] = useState<"player" | "lyrics">("player");
-  const [liked, setLiked] = useState(false); // local heart toggle in the fullscreen player
   const [lyricsOffset, setLyricsOffset] = useState(0);
   const lyricsOffsetRef = useRef(0);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -196,6 +369,51 @@ export default function BottomPlayer() {
 
   // Dominant colour of the current cover — used to tint the fullscreen player.
   const coverColor = useCoverColor(currentTrack?.cover_url);
+
+  // ── Favorites (the fullscreen Like heart) ──────────────────────────────────
+  // Fetched once; toggles are optimistic with revert on failure, mirroring
+  // HeartButton. Derived from the current track so the heart follows the song.
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const favLoggedInRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    getFavoriteIdsAction()
+      .then(({ loggedIn, ids }) => {
+        if (cancelled) return;
+        favLoggedInRef.current = loggedIn;
+        setFavoriteIds(new Set(ids));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const liked = currentTrack ? favoriteIds.has(currentTrack.id) : false;
+
+  const toggleLike = async () => {
+    if (!currentTrack) return;
+    if (!favLoggedInRef.current) {
+      showToast("Sign in to save favorites", "error");
+      return;
+    }
+    const id = currentTrack.id;
+    const wasLiked = favoriteIds.has(id);
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      if (wasLiked) next.delete(id); else next.add(id);
+      return next;
+    });
+    const result = await toggleFavoriteAction(id, wasLiked);
+    if (result.success) {
+      showToast(wasLiked ? "Removed from favorites" : "Added to favorites");
+    } else {
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        if (wasLiked) next.add(id); else next.delete(id);
+        return next;
+      });
+      showToast(result.error || "Couldn't update favorites", "error");
+    }
+  };
 
   const [externalLyrics, setExternalLyrics] = useState<string | null>(null);
   const [isFetchingLyrics, setIsFetchingLyrics] = useState(false);
@@ -305,19 +523,25 @@ export default function BottomPlayer() {
   const tailRef = useRef<HTMLAudioElement>(null);
   const crossfadingRef = useRef(false);   // guards against re-triggering mid-fade
   const fadeInPendingRef = useRef(false);  // incoming track should ramp up on play
+  // Fade intervals are kept in refs so pausing (or unmounting) mid-crossfade can
+  // cancel them — otherwise the outgoing tail keeps playing for up to
+  // CROSSFADE_SEC seconds after the user hit pause.
+  const tailFadeIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const primaryFadeIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // While a crossfade is audible, the compact bottom bar keeps showing the
   // OUTGOING track so the title/cover don't visibly jump ahead of the audio.
   const [crossfadePrevTrack, setCrossfadePrevTrack] = useState<Track | null>(null);
   const crossfadeUiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Linearly ramp a plain element's volume from→to over `seconds`, then onDone.
+  // Returns the interval id so callers can cancel the ramp early.
   const fadeElementVolume = (
     el: HTMLAudioElement,
     from: number,
     to: number,
     seconds: number,
     onDone?: () => void,
-  ) => {
+  ): ReturnType<typeof setInterval> => {
     const steps = Math.max(1, Math.round(seconds * 30));
     let i = 0;
     const id = setInterval(() => {
@@ -325,6 +549,18 @@ export default function BottomPlayer() {
       el.volume = Math.min(1, Math.max(0, from + (to - from) * (i / steps)));
       if (i >= steps) { clearInterval(id); onDone?.(); }
     }, (seconds * 1000) / steps);
+    return id;
+  };
+
+  // Abort the audible half of a crossfade: silence the outgoing tail, cancel its
+  // fade, and release the compact bar back to the live current track. Called on
+  // pause and on unmount so nothing keeps playing behind a paused UI.
+  const stopCrossfadeTail = () => {
+    if (tailFadeIdRef.current) { clearInterval(tailFadeIdRef.current); tailFadeIdRef.current = null; }
+    const tail = tailRef.current;
+    if (tail && !tail.paused) { try { tail.pause(); } catch {} }
+    if (crossfadeUiTimerRef.current) { clearTimeout(crossfadeUiTimerRef.current); crossfadeUiTimerRef.current = null; }
+    setCrossfadePrevTrack(null);
   };
 
   const startCrossfade = () => {
@@ -349,7 +585,11 @@ export default function BottomPlayer() {
       tail.currentTime = audio.currentTime;
       tail.volume = volume;
       tail.play().catch(() => {});
-      fadeElementVolume(tail, volume, 0, CROSSFADE_SEC, () => { try { tail.pause(); } catch {} });
+      if (tailFadeIdRef.current) clearInterval(tailFadeIdRef.current);
+      tailFadeIdRef.current = fadeElementVolume(tail, volume, 0, CROSSFADE_SEC, () => {
+        tailFadeIdRef.current = null;
+        try { tail.pause(); } catch {}
+      });
     } catch {}
 
     // Pre-silence the primary; the incoming ramp begins on its 'playing' event
@@ -380,7 +620,10 @@ export default function BottomPlayer() {
       g.linearRampToValueAtTime(Math.max(0.0001, volume), t0 + CROSSFADE_SEC);
     } else if (audio) {
       audio.volume = 0;
-      fadeElementVolume(audio, 0, volume, CROSSFADE_SEC);
+      if (primaryFadeIdRef.current) clearInterval(primaryFadeIdRef.current);
+      primaryFadeIdRef.current = fadeElementVolume(audio, 0, volume, CROSSFADE_SEC, () => {
+        primaryFadeIdRef.current = null;
+      });
     }
   };
 
@@ -655,6 +898,17 @@ export default function BottomPlayer() {
     setIsPlaying(!isPlaying);
   };
 
+  // Standard player behavior: if the track has played for a few seconds,
+  // Previous restarts it; only a quick second press goes to the previous track.
+  const handlePrev = () => {
+    const audio = audioRef.current;
+    if (audio && audio.currentTime > 3) {
+      audio.currentTime = 0;
+      return;
+    }
+    playPrevTrack();
+  };
+
   // Throttled persistence of the playback position so a reload / page change can
   // resume from where the user left off (keeps every view in sync).
   const lastPosSaveRef = useRef(0);
@@ -819,6 +1073,9 @@ export default function BottomPlayer() {
       }
     } else if (!isPlaying && audioRef.current) {
       audioRef.current.pause();
+      // Pausing mid-crossfade must also silence the outgoing tail element,
+      // otherwise it keeps playing for up to CROSSFADE_SEC after the pause.
+      stopCrossfadeTail();
     }
     return () => {
       if (errorSkipRef.current) {
@@ -826,7 +1083,19 @@ export default function BottomPlayer() {
         errorSkipRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrackIndex, isPlaying, tracks]);
+
+  // Unmount-only cleanup for crossfade timers/intervals. Deliberately separate
+  // from the effect above: its cleanup runs on every track change, which would
+  // kill the tail in the middle of a legitimate crossfade.
+  useEffect(() => {
+    return () => {
+      if (tailFadeIdRef.current) clearInterval(tailFadeIdRef.current);
+      if (primaryFadeIdRef.current) clearInterval(primaryFadeIdRef.current);
+      if (crossfadeUiTimerRef.current) clearTimeout(crossfadeUiTimerRef.current);
+    };
+  }, []);
 
   // ── Discord Rich Presence bridge ──────────────────────────────────────────
   // Emit a "now playing" snapshot whenever the track or play/pause state changes.
@@ -895,7 +1164,7 @@ export default function BottomPlayer() {
       audioRef.current.pause();
       setIsPlaying(false);
     });
-    ms.setActionHandler("previoustrack", () => playPrevTrack());
+    ms.setActionHandler("previoustrack", () => handlePrev());
     ms.setActionHandler("nexttrack", () => playNextTrack());
     ms.setActionHandler("seekbackward", (details) => {
       const audio = audioRef.current;
@@ -989,7 +1258,7 @@ export default function BottomPlayer() {
           break;
         case "ArrowLeft":
           e.preventDefault();
-          if (e.shiftKey) playPrevTrack();
+          if (e.shiftKey) handlePrev();
           else if (audio) audio.currentTime = Math.max(0, audio.currentTime - 5);
           break;
         case "ArrowUp":
@@ -1076,7 +1345,12 @@ export default function BottomPlayer() {
 
       const barWidth = (WIDTH / bufferLength) * 2.5;
       let x = 0;
-      const currentProgressIdx = duration ? (progress / duration) * bufferLength : 0;
+      // Read playback position straight from the element (not React state):
+      // keeps this effect free of `progress`/`duration` deps, which would tear
+      // down and rebuild the whole RAF loop on every timeupdate (~4x/s).
+      const audioEl = audioRef.current;
+      const dur = audioEl?.duration || 0;
+      const currentProgressIdx = dur ? ((audioEl?.currentTime || 0) / dur) * bufferLength : 0;
 
       for (let i = 0; i < bufferLength; i++) {
         const v = dataArray[i] / 255;               // 0..1 — now independent of volume
@@ -1116,7 +1390,7 @@ export default function BottomPlayer() {
       if (backoffId !== null) clearTimeout(backoffId);
       stopGate();
     };
-  }, [isExpanded, coverColor, isPlaying, duration, progress]);
+  }, [isExpanded, coverColor, isPlaying]);
 
   const rawUrl = currentTrack?.file_url || "";
   const audioSrc = rawUrl.includes(".r2.dev/")
@@ -1251,7 +1525,14 @@ export default function BottomPlayer() {
             </div>
 
             {/* Playlist / queue icon */}
-            <button className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-400 hover:text-white transition-all active:scale-95">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowQueue((v) => !v); }}
+              aria-label="Queue"
+              aria-pressed={showQueue}
+              title="Queue"
+              className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-400 hover:text-white transition-all active:scale-95"
+              style={{ color: showQueue ? accent : undefined }}
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M3 18h13v-2H3v2zm0-5h10v-2H3v2zm0-7v2h13V6H3zm18 9.59L17.42 12 21 8.41 19.59 7l-5 5 5 5L21 15.59z"/>
               </svg>
@@ -1309,16 +1590,16 @@ export default function BottomPlayer() {
                 </div>
               </div>
               {/* Clean Minimalist Actions */}
-              <div className="flex items-center gap-7 mt-4">
-                <button onClick={() => setLiked((v) => !v)} className="transition-all active:scale-90 hover:scale-110" style={{ color: liked ? accentFill : "#94a3b8" }} title="Like">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-                </button>
-                <button className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110" title="Add to playlist">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                </button>
-                <button className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110" title="More">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
-                </button>
+              <div className="mt-4">
+                <TrackActions
+                  track={currentTrack}
+                  liked={liked}
+                  onToggleLike={toggleLike}
+                  accentFill={accentFill}
+                  iconSize={28}
+                  gapClass="gap-7"
+                  onNavigate={() => setIsExpanded(false)}
+                />
               </div>
             </div>
 
@@ -1364,16 +1645,16 @@ export default function BottomPlayer() {
                   </div>
                 </div>
                 {/* Clean Minimalist Actions */}
-                <div className="flex items-center gap-8 mt-3 mb-2">
-                  <button onClick={() => setLiked((v) => !v)} className="transition-all active:scale-90 hover:scale-110" style={{ color: liked ? accentFill : "#94a3b8" }} title="Like">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-                  </button>
-                  <button className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110" title="Add to playlist">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                  </button>
-                  <button className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110" title="More">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
-                  </button>
+                <div className="mt-3 mb-2">
+                  <TrackActions
+                    track={currentTrack}
+                    liked={liked}
+                    onToggleLike={toggleLike}
+                    accentFill={accentFill}
+                    iconSize={26}
+                    gapClass="gap-8"
+                    onNavigate={() => setIsExpanded(false)}
+                  />
                 </div>
               </div>
 
@@ -1422,7 +1703,7 @@ export default function BottomPlayer() {
 
                 {/* Prev */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); playPrevTrack(); }}
+                  onClick={(e) => { e.stopPropagation(); handlePrev(); }}
                   aria-label="Previous track"
                   className="text-slate-300 hover:text-white transition-all active:scale-90 hover:scale-110"
                 >
@@ -1743,7 +2024,7 @@ export default function BottomPlayer() {
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
               </button>
-              <button onClick={playPrevTrack} aria-label="Previous track" className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
+              <button onClick={handlePrev} aria-label="Previous track" className="hover:opacity-80 transition-opacity" style={{ color: "var(--text-primary)" }}>
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
               </button>
               <button

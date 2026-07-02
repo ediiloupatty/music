@@ -2,7 +2,7 @@ import Link from "next/link";
 import PlaylistSection from "@/components/PlaylistSection";
 import HomeContent from "@/components/HomeContent";
 import Sidebar from "@/components/Sidebar";
-import { getTracksByCategory, getTracksByAlbum, getRecentlyPlayed, getNewTracks, getUserFavorites, getArtists, getPlaylists, getPlaylistById, getTrackById, Track } from "@/lib/cloudflare";
+import { getTracksByCategory, getTracksByAlbum, getRecentlyPlayed, getNewTracks, getUserFavorites, getArtists, getPlaylists, getPlaylistById, getPlaylistTracks, getTrackById, Track } from "@/lib/cloudflare";
 import { auth, signOut } from "@/auth";
 import PlaylistDetail from "@/components/PlaylistDetail";
 import DynamicBackground from "@/components/DynamicBackground";
@@ -39,7 +39,7 @@ export default async function PlayerHome({
 
   // These depend on results above, run in parallel where possible
   const [playlistTracks, userFavorites] = await Promise.all([
-    playlist ? getTracksByCategory(playlist.name) : Promise.resolve([]),
+    playlist ? getPlaylistTracks(playlist.id, playlist.name) : Promise.resolve([]),
     session?.user?.email ? getUserFavorites(session.user.email) : Promise.resolve([]),
   ]);
   const isLoggedIn = !!session?.user;
