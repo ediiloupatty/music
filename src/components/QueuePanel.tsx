@@ -7,6 +7,7 @@ import { formatDuration } from "@/lib/utils";
 import CoverImage from "@/components/CoverImage";
 import type { Track } from "@/lib/cloudflare";
 import { formatAudioSpecs } from "@/lib/formatSpecs";
+import TrackDuration from "@/components/TrackDuration";
 
 function MiniCover({ track }: { track: Track }) {
   if (track.cover_url) {
@@ -194,11 +195,11 @@ export default function QueuePanel({
                   <p className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
                     {current.artist || current.category}
                   </p>
-                  {current.duration && (
-                    <p className="text-[10px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                      {formatDuration(current.duration)}
-                    </p>
-                  )}
+                  <TrackDuration
+                    track={current}
+                    className="text-[10px] mt-0.5 block"
+                    style={{ color: "var(--text-secondary)" }}
+                  />
                 </div>
                 {/* Equalizer animation */}
                 <div className="flex items-end gap-[2px] h-4 flex-shrink-0 pr-1">
@@ -318,11 +319,11 @@ export default function QueuePanel({
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {u.track.duration && (
-                        <span className="text-[10px] font-medium tabular-nums" style={{ color: "var(--text-secondary)" }}>
-                          {formatDuration(u.track.duration)}
-                        </span>
-                      )}
+                      <TrackDuration
+                        track={u.track}
+                        className="text-[10px] font-medium tabular-nums"
+                        style={{ color: "var(--text-secondary)" }}
+                      />
                       <div 
                         className="w-6 h-6 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing" 
                         style={{ color: "var(--text-muted)", background: "var(--bg-card)" }}

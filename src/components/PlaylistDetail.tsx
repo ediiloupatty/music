@@ -6,6 +6,7 @@ import { usePlayer } from "@/context/PlayerContext";
 import { useCoverColor } from "@/lib/useCoverColor";
 import { useIncrementalList } from "./useIncrementalList";
 import CoverImage from "@/components/CoverImage";
+import TrackDuration from "@/components/TrackDuration";
 
 export default function PlaylistDetail({
   playlist,
@@ -142,11 +143,6 @@ export default function PlaylistDetail({
         <div className="flex flex-col">
           {tracks.slice(0, visibleCount).map((track, index) => {
             const isActive = currentPlayingId === track.id;
-            
-            // Format duration
-            const mins = Math.floor((track.duration || 0) / 60);
-            const secs = Math.floor((track.duration || 0) % 60);
-            const durationFormatted = `${mins}:${secs.toString().padStart(2, '0')}`;
 
             return (
               <div
@@ -205,8 +201,8 @@ export default function PlaylistDetail({
 
                 {/* Duration & Actions */}
                 <div className="flex items-center justify-end w-24 gap-3 text-sm text-white/60 pr-2">
-                  <span>{track.duration ? durationFormatted : "-:--"}</span>
-                  <button 
+                  <TrackDuration track={track} fallback="-:--" />
+                  <button
                     className="opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
                     onClick={(e) => { e.stopPropagation(); /* handle like */ }}
                   >

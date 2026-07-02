@@ -10,6 +10,7 @@ import { cleanTitle } from "@/lib/cleanTitle";
 import { moveTrackToPlaylistAction } from "@/app/actions/tracks";
 import { useIncrementalList } from "./useIncrementalList";
 import CoverImage from "@/components/CoverImage";
+import TrackDuration from "@/components/TrackDuration";
 
 // Generate a consistent index from a string
 function hashString(str: string): number {
@@ -19,13 +20,6 @@ function hashString(str: string): number {
     hash |= 0;
   }
   return Math.abs(hash);
-}
-
-function formatDuration(secs?: number): string {
-  if (!secs || !Number.isFinite(secs) || secs <= 0) return "";
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${s < 10 ? "0" : ""}${s}`;
 }
 
 // Beautiful gradient palettes for track covers
@@ -192,7 +186,6 @@ export default function MainTracksContainer({
             {displayTracks.slice(0, visibleCount).map((track, idx) => {
               const isFavorited = userFavorites.includes(track.id);
               const isCurrent = !!currentPlayingId && track.id === currentPlayingId;
-              const dur = formatDuration(track.duration);
 
               return (
                 <div
@@ -282,21 +275,18 @@ export default function MainTracksContainer({
                           </span>
                         )}
                       </div>
-                      <span
+                      <TrackDuration
+                        track={track}
                         className="hidden sm:block w-12 text-right text-xs font-mono tabular-nums flex-shrink-0"
                         style={{ color: "var(--text-muted)" }}
-                      >
-                        {dur || "--:--"}
-                      </span>
+                      />
                     </>
                   )}
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {!columns && dur && (
-                      <span className="text-xs font-mono tabular-nums hidden sm:block" style={{ color: "var(--text-muted)" }}>
-                        {dur}
-                      </span>
+                    {!columns && (
+                      <TrackDuration track={track} className="text-xs font-mono tabular-nums hidden sm:block" style={{ color: "var(--text-muted)" }} />
                     )}
 
                     {/* ⋯ menu — hidden until the row is hovered */}

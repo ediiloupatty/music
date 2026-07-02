@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
 import CoverImage from "@/components/CoverImage";
+import TrackDuration from "@/components/TrackDuration";
 
 export default function CompactTrackList({
   heading,
@@ -74,9 +75,11 @@ export default function CompactTrackList({
 
               {/* Right side: Duration + Action Icon */}
               <div className="flex items-center gap-4 flex-shrink-0">
-                <span className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--text-muted)" }}>
-                  {track.duration ? `${Math.floor(track.duration / 60)}:${String(Math.floor(track.duration % 60)).padStart(2, "0")}` : "3:45"}
-                </span>
+                <TrackDuration
+                  track={track}
+                  className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ color: "var(--text-muted)" }}
+                />
                 
                 {actionType === "play" ? (
                   <button className="w-8 h-8 rounded-full flex items-center justify-center border transition-all hover:bg-white/10" style={{ borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}>

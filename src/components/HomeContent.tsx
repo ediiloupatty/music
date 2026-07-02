@@ -13,8 +13,9 @@ import ArtistGrid from "@/components/ArtistGrid";
 import PlaylistGrid from "@/components/PlaylistGrid";
 import HeartButton from "@/components/HeartButton";
 import DailyMixSection from "@/components/DailyMixSection";
-import { hashString, formatDuration, PALETTES } from "@/lib/utils";
+import { hashString, PALETTES } from "@/lib/utils";
 import CoverImage from "@/components/CoverImage";
+import TrackDuration from "@/components/TrackDuration";
 
 type HomeContentProps = {
   tracks: Track[];
@@ -250,9 +251,7 @@ function CuratedHeroAndSongs({
                       </p>
                       <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{t.artist || t.category}</p>
                     </div>
-                    <span className="text-xs font-mono tabular-nums flex-shrink-0" style={{ color: "var(--text-muted)" }}>
-                      {formatDuration(t.duration)}
-                    </span>
+                    <TrackDuration track={t} className="text-xs font-mono tabular-nums flex-shrink-0" style={{ color: "var(--text-muted)" }} />
                     <span
                       className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
                       style={{ border: "1px solid var(--border-card)", color: "var(--accent)" }}
@@ -338,9 +337,7 @@ function CuratedHeroAndSongs({
                     {t.album || "—"}
                   </span>
                   {/* Duration */}
-                  <span className="w-12 text-right text-xs font-mono tabular-nums flex-shrink-0" style={{ color: "var(--text-muted)" }}>
-                    {formatDuration(t.duration)}
-                  </span>
+                  <TrackDuration track={t} className="w-12 text-right text-xs font-mono tabular-nums flex-shrink-0" style={{ color: "var(--text-muted)" }} />
                   {/* Actions */}
                   <div className="flex items-center gap-1 w-10 md:w-16 flex-shrink-0 justify-end" onClick={(e) => e.stopPropagation()}>
                     <HeartButton

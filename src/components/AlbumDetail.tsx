@@ -6,8 +6,9 @@ import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
 import { cleanTitle } from "@/lib/cleanTitle";
 import { toggleFavoriteAction } from "@/app/actions/favorites";
-import { hashString, formatDuration, PALETTES } from "@/lib/utils";
+import { hashString, PALETTES } from "@/lib/utils";
 import CoverImage from "@/components/CoverImage";
+import TrackDuration from "@/components/TrackDuration";
 
 function formatPlays(n?: number): string {
   if (!n || n <= 0) return "0";
@@ -244,9 +245,7 @@ export default function AlbumDetail({
                 </span>
 
                 {/* Duration */}
-                <span className="w-14 text-right text-sm font-mono tabular-nums flex-shrink-0" style={{ color: "var(--text-muted)" }}>
-                  {formatDuration(track.duration)}
-                </span>
+                <TrackDuration track={track} className="w-14 text-right text-sm font-mono tabular-nums flex-shrink-0" style={{ color: "var(--text-muted)" }} />
 
                 {/* Heart + download */}
                 <div className="w-20 flex items-center justify-end gap-3 flex-shrink-0" onClick={(e) => e.stopPropagation()}>

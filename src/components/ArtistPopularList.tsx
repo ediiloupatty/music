@@ -6,8 +6,9 @@ import { Track } from "@/lib/cloudflare";
 import { usePlayer } from "@/context/PlayerContext";
 import { cleanTitle } from "@/lib/cleanTitle";
 import { toggleFavoriteAction } from "@/app/actions/favorites";
-import { hashString, formatDuration, PALETTES } from "@/lib/utils";
+import { hashString, PALETTES } from "@/lib/utils";
 import CoverImage from "@/components/CoverImage";
+import TrackDuration from "@/components/TrackDuration";
 
 function Equalizer({ playing }: { playing: boolean }) {
   return (
@@ -82,7 +83,6 @@ export default function ArtistPopularList({
       <div className="flex flex-col">
         {tracks.map((track, i) => {
           const isCurrent = currentId === track.id;
-          const dur = formatDuration(track.duration);
           const [c1, c2] = PALETTES[hashString(track.title + track.category) % PALETTES.length];
 
           return (
@@ -120,9 +120,7 @@ export default function ArtistPopularList({
               {isCurrent && <Equalizer playing={isPlaying} />}
 
               {/* Duration */}
-              <span className="text-xs flex-shrink-0 tabular-nums w-9 text-right" style={{ color: "var(--text-muted)" }}>
-                {dur}
-              </span>
+              <TrackDuration track={track} className="text-xs flex-shrink-0 tabular-nums w-9 text-right" style={{ color: "var(--text-muted)" }} />
 
               {/* Heart */}
               <Heart trackId={track.id} initial={userFavorites.includes(track.id)} isLoggedIn={isLoggedIn} />
