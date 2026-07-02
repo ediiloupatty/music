@@ -52,7 +52,7 @@ function SectionHeading({ title, href }: { title: string; href?: string }) {
         {title}
       </h2>
       {href && (
-        <Link href={href} className="flex items-center gap-1 text-sm font-semibold transition-colors hover:opacity-80" style={{ color: "var(--accent)" }}>
+        <Link href={href} prefetch={true} className="flex items-center gap-1 text-sm font-semibold transition-colors hover:opacity-80" style={{ color: "var(--accent)" }}>
           View all
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z" />

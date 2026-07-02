@@ -8,6 +8,15 @@ const nextConfig: NextConfig = {
     // Tree-shake heavy packages more aggressively — reduces JS bundle parsed
     // by the browser on initial load without any code changes needed elsewhere.
     optimizePackageImports: ['swr', 'fuse.js', 'music-metadata'],
+    // Keep visited pages in the client-side router cache so navigating back to
+    // them renders instantly from memory (no server round-trip, no skeleton
+    // flash) — the "Spotify feel". Data can be up to 3 min stale on revisits,
+    // which is fine for a personal music library; server actions that mutate
+    // (favorites, playlists) still bust the cache via revalidation.
+    staleTimes: {
+      dynamic: 180,
+      static: 300,
+    },
   },
   images: {
     // Prefer AVIF then WebP for album art — typically 40-60 % smaller than JPEG

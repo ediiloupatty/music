@@ -59,7 +59,7 @@ export default function AlbumSection({
           {heading}
         </h2>
         {viewAllHref && hasMore && (
-          <Link href={viewAllHref} className="text-sm font-semibold hover:underline" style={{ color: "var(--accent)" }}>
+          <Link href={viewAllHref} prefetch={true} className="text-sm font-semibold hover:underline" style={{ color: "var(--accent)" }}>
             View all
           </Link>
         )}

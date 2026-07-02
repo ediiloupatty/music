@@ -46,6 +46,9 @@ export default function SidebarNav({ isAdmin }: { isAdmin: boolean }) {
           <Link
             key={it.href}
             href={it.href}
+            // Fully prefetch (data included) as soon as the link is visible, so
+            // the first click on a nav item is as instant as a revisit.
+            prefetch={true}
             aria-current={active ? "page" : undefined}
             title={it.label}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl group transition-all hover:bg-white/5"

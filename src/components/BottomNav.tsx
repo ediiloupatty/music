@@ -68,6 +68,9 @@ export default function BottomNav() {
           <Link
             key={tab.href}
             href={tab.href}
+            // Fully prefetch (data included) as soon as the tab is visible, so
+            // the first tap on a tab is as instant as a revisit.
+            prefetch={true}
             className="flex flex-col items-center gap-1.5 py-1.5 px-4 rounded-xl transition-all active:scale-95 group"
             style={{
               color: isActive ? "var(--accent)" : "var(--text-muted)",
